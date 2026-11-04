@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <title>Topmate Diwali Mela</title>
+    <meta name="description" content="A virtual Diwali mela by Topmate: rides, stalls, games, fireworks, a Ramayan show and the Pushpak Viman." />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Yatra+One&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="css3d"></div>
+    <div id="app"></div>
+    <div id="bubbles"></div>
+    <div id="flash"></div>
+
+    <div id="loader">
+      <div class="ld-diya">🪔</div>
+      <div class="ld-title">Topmate Diwali Mela</div>
+      <div class="ld-bar"><div class="ld-fill"></div></div>
+      <div class="ld-label">Lighting the diyas…</div>
+    </div>
+
+    <!-- Avatar customiser: the intro, and the 👤 editor later -->
+    <div id="intro" class="overlay hidden">
+      <form class="cust-card" id="custForm" autocomplete="off">
+        <button type="button" id="custClose" class="cust-close edit-only" aria-label="Close">✕</button>
+        <div class="cust-left">
+          <div class="cust-brand">
+            <div class="hindi">शुभ दीपावली</div>
+            <h1>Topmate Diwali Mela</h1>
+            <p class="sub intro-only">Eat, shop, play, ride, fly and light up the night</p>
+          </div>
+          <div class="cust-stage">
+            <canvas id="custPreview"></canvas>
+            <small>Drag to spin</small>
+          </div>
+        </div>
+        <div class="cust-right">
+          <label class="field">
+            <span>Your name <b class="req">*</b></span>
+            <input id="custName" maxlength="24" placeholder="e.g. Priya" required />
+          </label>
+          <label class="field">
+            <span>Topmate username <small>(optional)</small></span>
+            <div class="prefix"><span>topmate.io/</span><input id="custHandle" maxlength="60" placeholder="yourname" spellcheck="false" /></div>
+            <div id="custStatus" class="cust-status"></div>
+          </label>
+
+          <div class="cust-section"><span>Outfit colour</span><div class="swatches" data-field="top"></div></div>
+          <div class="cust-grid">
+            <div class="cust-section"><span>Skin</span><div class="swatches" data-field="skin"></div></div>
+            <div class="cust-section"><span>Bottoms</span><div class="swatches" data-field="bottom"></div></div>
+          </div>
+          <div class="cust-section"><span>Accent · pagdi, dupatta, bangles</span><div class="swatches" data-field="accent"></div></div>
+          <div class="cust-section"><span>Outfit</span><div class="chips" data-field="style"></div></div>
+          <div class="cust-section"><span>Hair &amp; headwear</span><div class="chips" data-field="hairStyle"></div></div>
+          <div class="cust-section"><span>Extras</span><div class="chips toggles" data-field="extras"></div></div>
+
+          <div id="custError" class="cust-error hidden"></div>
+          <div class="cust-actions">
+            <button type="button" id="custRandom" class="ghost">🎲 Randomise</button>
+            <button type="submit" id="custEnter" class="primary">Enter the Mela</button>
+          </div>
+          <div class="controls-hint desktop-only intro-only">
+            <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
+            <span><kbd>Space</kbd> jump</span>
+            <span><kbd>E</kbd> interact</span>
+            <span>Drag to turn the camera</span>
+          </div>
+          <div class="controls-hint touch-only intro-only">
+            <span>Left thumb to walk</span>
+            <span>Drag to look</span>
+            <span>Tap the prompt to interact</span>
+          </div>
+        </div>
+      </form>
+    </div>
+
+    <header id="hud-top">
+      <div class="brand">🪔 Topmate Diwali Mela</div>
+      <nav id="places">
+        <button data-place="gate">Gate</button>
+        <button data-place="creators">Creators</button>
+        <button data-place="selfie">Selfie</button>
+        <button data-place="tambola">Tambola</button>
+        <button data-place="ramleela">Ramleela</button>
+        <button data-place="ravan">Ravan</button>
+        <button data-place="bazaar">Bazaar</button>
+        <button data-place="games">Games</button>
+        <button data-place="train">Train</button>
+        <button data-place="carousel">Carousel</button>
+        <button data-place="columbus">Columbus</button>
+        <button data-place="cars">Cars</button>
+        <button data-place="airfield">Airfield</button>
+        <button data-place="plaza">Rangoli</button>
+        <button data-place="kuan">Kuan</button>
+        <button data-place="wheel">Giant Wheel</button>
+        <button data-place="fireworks">Fireworks</button>
+        <button data-place="ghat">Ghat</button>
+      </nav>
+      <div class="hud-icons">
+        <button id="avatarBtn" class="icon" title="Change your look (C)">👤</button>
+        <button id="micBtn" class="icon" title="Voice chat (V)">🎤</button>
+        <button id="boardsBtn" class="icon" title="Leaderboard & wishes (T)">🏆</button>
+        <button id="passportBtn" class="icon" title="Passport (P)">📜</button>
+        <button id="musicBtn" class="icon" title="Music on (B)">🎵</button>
+        <button id="muteBtn" class="icon" title="Sound (M)">🔊</button>
+        <button id="settingsBtn" class="icon" title="Settings">⚙️</button>
+      </div>
+    </header>
+    <div id="chips"></div>
+
+    <div id="toast"></div>
+    <div id="stampToast"></div>
+
+    <div id="prompts">
+      <button id="prompt" class="prompt hidden"><kbd>E</kbd><span></span></button>
+      <button id="prompt2" class="prompt alt hidden"><kbd>Q</kbd><span></span></button>
+    </div>
+
+    <div id="ctxHelp" class="desktop-only"></div>
+
+    <div id="actionbar">
+      <button data-action="rocket" title="1"><span>🚀</span>Rocket</button>
+      <button data-action="anaar" title="2"><span>🌋</span>Anaar</button>
+      <button data-action="chakri" title="3"><span>🌀</span>Chakri</button>
+      <button data-action="phuljhadi" title="4"><span>✨</span>Phuljhadi</button>
+      <button data-action="lantern" title="L"><span>🏮</span>Wish Lantern</button>
+      <button data-action="show" title="G"><span>🎆</span>Grand Show</button>
+      <button data-action="photo" title="F"><span>📸</span>Photo</button>
+    </div>
+
+    <button id="jumpBtn" class="touch-only">⤒</button>
+    <div id="vehicleBtns" class="touch-only hidden">
+      <button id="vehUp">▲</button>
+      <button id="vehDown">▼</button>
+    </div>
+
+    <div id="crosshair" class="hidden"></div>
+
+    <div id="gameHud" class="hidden">
+      <div class="gh-title"></div>
+      <div class="gh-stats"></div>
+      <div class="gh-bar hidden"><div class="fill"></div><div class="zone"></div><span class="label"></span></div>
+      <div class="gh-timer hidden"><div class="fill"></div></div>
+      <div class="gh-help"></div>
+      <button id="gameExit" class="ghost">✕ Leave <kbd>Esc</kbd></button>
+    </div>
+
+    <div id="wishModal" class="overlay hidden">
+      <form class="modal-card" id="wishForm">
+        <h2>Make a wish 🏮</h2>
+        <p>Write your wish and release it into the night sky.</p>
+        <input id="wishInput" maxlength="60" placeholder="May this year bring..." autocomplete="off" />
+        <div class="row">
+          <button type="button" id="wishCancel" class="ghost">Cancel</button>
+          <button type="submit" class="primary small">Release</button>
+        </div>
+      </form>
+    </div>
+
+    <div id="menu" class="overlay hidden">
+      <div class="modal-card">
+        <h2></h2>
+        <p></p>
+        <div class="options"></div>
+        <div class="row"><button class="ghost" data-cancel>Not now</button></div>
+      </div>
+    </div>
+
+    <div id="result" class="overlay hidden">
+      <div class="modal-card center">
+        <div class="big"></div>
+        <h2></h2>
+        <p></p>
+        <div class="row"></div>
+      </div>
+    </div>
+
+    <div id="passport" class="overlay hidden">
+      <div class="modal-card wide">
+        <h2>📜 Mela Passport</h2>
+        <p class="pp-progress"></p>
+        <div class="stamps"></div>
+        <div class="row"><button class="primary small" data-close>Close</button></div>
+      </div>
+    </div>
+
+    <div id="boards" class="overlay hidden">
+      <div class="modal-card wide">
+        <h2>🏆 Mela Champions</h2>
+        <p class="online"></p>
+        <div class="tabs">
+          <button data-tab="golgappa">🥟 Golgappa</button>
+          <button data-tab="lap">🏁 Best lap</button>
+          <button data-tab="striker">🔔 Strongman</button>
+          <button data-tab="wishes">🏮 Wishes</button>
+        </div>
+        <div class="board-body"></div>
+        <div class="row"><button class="primary small" data-close>Close</button></div>
+      </div>
+    </div>
+
+    <div id="settingsPanel" class="overlay hidden">
+      <div class="modal-card">
+        <h2>⚙️ Settings</h2>
+        <div class="settings-body"></div>
+        <div class="row"><button class="primary small" data-close>Done</button></div>
+      </div>
+    </div>
+
+    <div id="creatorCard" class="overlay hidden">
+      <div class="modal-card center creator">
+        <div class="cc-photo"><img alt="" class="hidden" /><div class="cc-initial"></div></div>
+        <h2></h2>
+        <p class="cc-handle"></p>
+        <p class="cc-headline"></p>
+        <div class="row">
+          <button class="primary small" data-book>Book a session on Topmate ↗</button>
+          <button class="ghost" data-close>Maybe later</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="tambola" class="overlay light hidden">
+      <div class="modal-card tambola-card">
+        <div class="tb-head">
+          <div><div class="tb-current">–</div><div class="tb-call"></div></div>
+          <div class="tb-side"><div class="tb-count"></div><div class="tb-recent"></div></div>
+        </div>
+        <div class="ticket"></div>
+        <div class="tb-prizes"></div>
+        <div class="row"><button class="ghost" id="tambolaLeave">Leave the table <kbd>Esc</kbd></button></div>
+      </div>
+    </div>
+
+    <div id="posterModal" class="overlay hidden">
+      <div class="modal-card poster-card">
+        <div class="poster-preview">
+          <img id="posterImg" alt="Your Topmate Diwali Mela poster" />
+          <div class="poster-busy">Rendering…</div>
+        </div>
+        <div class="poster-side">
+          <h2>📸 Your mela poster</h2>
+          <p>Post it on LinkedIn or Instagram and bring your friends to the mela.</p>
+          <div class="seg-label">Format</div>
+          <div class="seg" id="posterFormat">
+            <button data-f="square" class="on">Square</button>
+            <button data-f="story">Story</button>
+            <button data-f="linkedin">LinkedIn</button>
+          </div>
+          <div class="seg-label">Your photo</div>
+          <div class="seg" id="posterPhoto">
+            <button data-p="topmate">Topmate photo</button>
+            <button data-p="avatar">My avatar</button>
+            <button data-p="upload">Upload…</button>
+          </div>
+          <input type="file" id="posterFile" accept="image/*" hidden />
+          <div class="poster-status" id="posterStatus"></div>
+          <div class="row wrap">
+            <button class="primary small" id="posterDownload">⬇ Download</button>
+            <button class="ghost" id="posterShare">Share…</button>
+            <button class="ghost" id="posterCaption">Copy caption</button>
+            <button class="ghost" id="posterRetake">Retake</button>
+            <button class="ghost" id="posterClose">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div id="joystick"><div class="knob"></div></div>
+
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
