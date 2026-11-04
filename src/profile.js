@@ -48,7 +48,7 @@ export const profile = {
     if (!h) return null;
     this._cache ??= new Map();
     if (this._cache.has(h)) return this._cache.get(h);
-    const p = fetch(`/api/topmate?u=${encodeURIComponent(h)}`, { signal: AbortSignal.timeout(9000) })
+    const p = fetch(`${import.meta.env.BASE_URL}api/topmate?u=${encodeURIComponent(h)}`, { signal: AbortSignal.timeout(9000) })
       .then((r) => (r.ok ? r.json() : null))
       .catch(() => null)
       .then((data) => {

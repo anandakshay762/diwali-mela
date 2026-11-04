@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { rand } from './utils.js';
 
-const MUSIC_URL = '/audio/diwali-song.mp3';
+const MUSIC_URL = `${import.meta.env.BASE_URL}audio/diwali-song.mp3`;
 const MUSIC_LEVEL = 0.32;
 
 /**
