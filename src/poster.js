@@ -1,12 +1,15 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { StringLights } from './stringLights.js';
 import { Garlands } from './garlands.js';
 import { diyaMesh } from './items.js';
 import { beam, canvasTexture, hdr, WARM_PALETTE } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
 import { SITES } from './world.js';
 import { profile } from './profile.js';
 import { STAMPS } from './passport.js';
+import { track } from './track.js';
 
 export const MELA_URL = location.origin + location.pathname.replace(/index\.html$/, '');
 const YEAR = new Date().getFullYear();
@@ -29,10 +32,29 @@ const POSES = [
 const loadImage = (src) =>
   new Promise((resolve, reject) => {
     const img = new Image();
+    img.crossOrigin = 'anonymous'; // a photo from a cross-origin VITE_API_BASE must not taint the poster canvas
     img.onload = () => resolve(img);
     img.onerror = reject;
     img.src = src;
   });
+
+const SHOT_MAX = 1920; // longest side of a captured frame: posters are at most 1920 px wide
+
+/**
+ * Copies the frame just rendered into a 2D canvas, scaled down to SHOT_MAX. It must run in the
+ * same task as the render (the WebGL buffer is cleared once the browser composites), and unlike
+ * toDataURL it doesn't JPEG-encode a 4 MP frame into a string on the main thread.
+ */
+function grabFrame(src) {
+  const k = Math.min(1, SHOT_MAX / Math.max(src.width, src.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(src.width * k);
+  c.height = Math.round(src.height * k);
+  const g = c.getContext('2d');
+  g.imageSmoothingQuality = 'high';
+  g.drawImage(src, 0, 0, c.width, c.height);
+  return c;
+}
 
 /** Draws img to cover the box; focusX/focusY (0..1) pick which part of the image stays visible. */
 function cover(g, img, x, y, w, h, focusX = 0.5, focusY = 0.5) {
@@ -86,7 +108,7 @@ export async function composePoster({ shot, photo, name, handle, headline, done,
   c.height = H;
   const g = c.getContext('2d');
 
-  const img = await loadImage(shot);
+  const img = typeof shot === 'string' ? await loadImage(shot) : shot; // a URL or a grabbed canvas
   cover(g, img, 0, 0, W, H, land ? 0.62 : 0.5, 0.5);
 
   if (land) {
@@ -256,13 +278,17 @@ export class Poster {
       c.fillStyle = '#ffcf5c';
       c.shadowColor = 'rgba(255,150,40,0.9)';
       c.shadowBlur = 24;
-      c.font = '112px "Yatra One", serif';
-      c.fillText('Topmate', w / 2, h / 2 - 110);
-      c.fillText('Diwali Mela', w / 2, h / 2 + 10);
+      // the frame text is personal (selfie.frame1 / frame2 / tagline): shrink a long line to fit
+      const fit = (text, size, font, y, maxW = w - 220) => {
+        do c.font = font(size);
+        while (c.measureText(text).width > maxW && (size -= 4) > 24);
+        c.fillText(text, w / 2, y);
+      };
+      fit(slot('selfie.frame1'), 112, (n) => `${n}px "Yatra One", serif`, h / 2 - 110);
+      fit(slot('selfie.frame2'), 112, (n) => `${n}px "Yatra One", serif`, h / 2 + 10);
       c.shadowBlur = 0;
       c.fillStyle = '#fff6e5';
-      c.font = '600 40px Poppins, sans-serif';
-      c.fillText(`#TopmateDiwaliMela · ${YEAR}`, w / 2, h / 2 + 120);
+      fit(`${slot('selfie.tagline')} · ${YEAR}`, 40, (n) => `600 ${n}px Poppins, sans-serif`, h / 2 + 120);
       c.font = '64px "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif';
       c.fillText('🪔  🎆  🪔', w / 2, h / 2 + 210);
     });
@@ -331,7 +357,7 @@ export class Poster {
 
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(3.4, 0.95),
-      new THREE.MeshBasicMaterial({ map: signTexture('Selfie Point', 'Press E · get your mela poster', '#6a0d2b'), color: new THREE.Color(1.2, 1.2, 1.2), side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.selfie'), tk('Press E · get your mela poster', 'Tap the button · get your mela poster', 'Get your mela poster'), '#6a0d2b'), color: new THREE.Color(1, 1, 1), side: THREE.DoubleSide })
     );
     sign.position.set(S.x - 3.2, 2.6, S.z - 3.6);
     sign.rotation.y = -Math.PI / 2;
@@ -386,6 +412,7 @@ export class Poster {
     this.flash();
     audio.shutter();
     this.shot = this.capture();
+    track('selfie', { mode: 'point', pose: POSES[choice].label ?? choice });
     await tasks.wait(0.5);
     player.char.clearAction();
     player.setBusy(false);
@@ -404,7 +431,7 @@ export class Poster {
 
   /** Renders one frame from the tripod and grabs it before the browser composites. */
   capture() {
-    const { camera, renderer, composer, interactions, bloom } = this.ctx;
+    const { camera, renderer, interactions, bloom } = this.ctx;
     const S = this.S;
     const exposure = renderer.toneMappingExposure;
     const strength = bloom?.strength;
@@ -420,8 +447,7 @@ export class Poster {
     camera.updateMatrixWorld(true);
     const marker = interactions.marker.visible;
     interactions.marker.visible = false;
-    composer.render();
-    const url = renderer.domElement.toDataURL('image/jpeg', 0.92);
+    const shot = this.grab();
     renderer.toneMappingExposure = exposure;
     if (bloom) bloom.strength = strength;
     interactions.marker.visible = marker;
@@ -429,7 +455,7 @@ export class Poster {
     camera.position.copy(pos);
     camera.quaternion.copy(quat);
     camera.updateProjectionMatrix();
-    return url;
+    return shot;
   }
 
   // ---------- the poster modal ----------
@@ -500,18 +526,28 @@ export class Poster {
     audio.shutter();
     this.flash();
     this.shot = this.captureCurrent();
+    track('selfie', { mode: 'snap', ride: this.ctx.player.mode });
     passport.stamp('poster');
     this.open();
   }
 
   captureCurrent() {
-    const { renderer, composer, interactions } = this.ctx;
+    const { interactions } = this.ctx;
     const marker = interactions.marker.visible;
     interactions.marker.visible = false;
-    composer.render();
-    const url = renderer.domElement.toDataURL('image/jpeg', 0.92);
+    const shot = this.grab();
     interactions.marker.visible = marker;
-    return url;
+    return shot;
+  }
+
+  /** Renders and grabs a frame at no less than 1.25x, so a phone the governor has dropped to 0.8x still gives a sharp poster. */
+  grab() {
+    const { renderer, composer, atLeastPixelRatio } = this.ctx;
+    const shoot = () => {
+      composer.render();
+      return grabFrame(renderer.domElement);
+    };
+    return atLeastPixelRatio ? atLeastPixelRatio(1.25, shoot) : shoot();
   }
 
   async open() {
@@ -555,7 +591,13 @@ export class Poster {
         shareLink: this.shareLink(),
       });
       this.canvas = canvas;
-      this.img.src = canvas.toDataURL('image/jpeg', 0.9);
+      // encode off the main thread where the browser can, and show it through an object URL
+      this.posterBlob = await new Promise((r) => canvas.toBlob(r, 'image/jpeg', 0.92));
+      if (this.posterBlob) {
+        if (this.previewUrl) URL.revokeObjectURL(this.previewUrl);
+        this.previewUrl = URL.createObjectURL(this.posterBlob);
+        this.img.src = this.previewUrl;
+      }
       this.el.classList.remove('busy');
     }));
     return my;
@@ -563,10 +605,11 @@ export class Poster {
 
   async blob() {
     await this.rendering;
-    return new Promise((r) => this.canvas.toBlob(r, 'image/jpeg', 0.93));
+    return this.posterBlob ?? new Promise((r) => this.canvas.toBlob(r, 'image/jpeg', 0.92));
   }
 
-  async download() {
+  async download(via = 'download') {
+    if (via === 'download') track('share', { target: 'download', format: this.format, photo: this.photoMode });
     const blob = await this.blob();
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
@@ -580,15 +623,21 @@ export class Poster {
     const blob = await this.blob();
     const file = new File([blob], 'topmate-diwali-mela.jpg', { type: 'image/jpeg' });
     try {
-      if (navigator.canShare?.({ files: [file] })) await navigator.share({ files: [file], text: this.caption(), title: 'Topmate Diwali Mela' });
-      else await this.download();
+      if (navigator.canShare?.({ files: [file] })) {
+        await navigator.share({ files: [file], text: this.caption(), title: 'Topmate Diwali Mela' });
+        track('share', { target: 'native', format: this.format, photo: this.photoMode });
+      } else {
+        track('share', { target: 'native_fallback', format: this.format, photo: this.photoMode });
+        await this.download('share');
+      }
     } catch {
-      // the share sheet was dismissed
+      track('share', { target: 'native', dismissed: true, format: this.format });
     }
   }
 
   async copyCaption() {
     try {
+      track('share', { target: 'caption' });
       await navigator.clipboard.writeText(this.caption());
       this.ctx.ui.toast('📋 Caption copied. Paste it with your poster!');
     } catch {

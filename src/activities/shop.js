@@ -1,12 +1,19 @@
+import { tk } from '../touch.js';
 import * as THREE from 'three';
 import { diyaMesh, kandeelMesh, balloonMesh, teddyMesh, giftMesh, forgetFlames } from '../items.js';
 import { rand } from '../utils.js';
 import { profile } from '../profile.js';
+import { InstanceBatcher } from '../merge.js';
+import { KANDEEL_DROP } from '../wall.js';
+import { slot, slotSet } from '../personalSlots.js';
+import { track } from '../track.js';
 
 const _v = new THREE.Vector3();
 const PLACED_KEY = 'melaPlaced';
 const MAX_PLACED = 60;
 
+// labels are personal slots (menu.<stall>.<n>); a renamed colour drops the stock description under it
+const named = (goods, items) => items.map((it, i) => (slotSet(`menu.${goods}.${i + 1}`) ? { ...it, label: slot(`menu.${goods}.${i + 1}`), sub: '' } : it));
 const KANDEELS = [
   { color: 0xff3d6e, icon: '🩷', label: 'Rani pink' },
   { color: 0xffb000, icon: '🧡', label: 'Marigold' },
@@ -32,6 +39,8 @@ const LABELS = {
   bangles: 'Try on bangles 💍',
   toys: 'Buy a balloon 🎈',
 };
+let STRING_MAT = null; // one material for every balloon string
+
 const MAKERS = {
   diya: () => diyaMesh(),
   kandeel: (c) => kandeelMesh(c),
@@ -45,6 +54,8 @@ export class Shops {
     this.floaters = [];
     this.flyaways = [];
     this.placed = [];
+    // every placed diya / kandeel / prize is drawn through a handful of instanced meshes
+    this.batch = new InstanceBatcher(ctx.scene, MAX_PLACED + 4);
     for (const st of ctx.world.stalls) {
       const g = st.def.goods;
       if (!LABELS[g]) continue;
@@ -62,7 +73,16 @@ export class Shops {
   }
 
   async visit(st) {
-    const { ui, player, audio, passport, tasks, debris } = this.ctx;
+    const { player, audio, passport, tasks, debris } = this.ctx;
+    const goods = st.def.goods;
+    track('stall', { stall: goods, name: st.def.name, action: 'open' });
+    // the same ui, with every menu pick (or a walk-away) tracked
+    const ui = Object.create(this.ctx.ui);
+    ui.menu = async (title, sub, items) => {
+      const i = await this.ctx.ui.menu(title, sub, items);
+      track('stall', { stall: goods, action: i === null ? 'cancel' : 'pick', item: i === null ? '' : items[i].label });
+      return i;
+    };
     player.setBusy(true);
     player.faceTowards(st.center.x, st.center.z);
     const keeperHead = (o) => st.keeper.headTop.getWorldPosition(o);
@@ -70,21 +90,21 @@ export class Shops {
       switch (st.def.goods) {
         case 'diyas':
           await this.serve(st, diyaMesh(), 'diya', 'hold');
-          ui.bubble(keeperHead, 'Shubh Deepavali! 🪔', 2);
-          ui.toast('🪔 Press Q to place your diya, or float it on the river at the ghat');
+          ui.bubble(keeperHead, slot('shout.diyas'), 2);
+          ui.toast(tk('🪔 Press Q to place your diya, or float it on the river at the ghat', '🪔 Tap “Place the diya” to set it down, or float it on the river at the ghat'));
           break;
         case 'lanterns': {
-          const opts = profile.golden ? [...KANDEELS, GOLD_KANDEEL] : KANDEELS;
-          const i = await ui.menu('Kandeel House', 'Pick a lantern colour', opts);
+          const opts = profile.golden ? [...named('lanterns', KANDEELS), GOLD_KANDEEL] : named('lanterns', KANDEELS);
+          const i = await ui.menu(st.def.name, 'Pick a lantern colour', opts);
           if (i === null) break;
           const color = opts[i].color;
           await this.serve(st, kandeelMesh(color), 'kandeel', 'holdUp', [0, -0.05, 0.05], color);
           passport.stamp('kandeel');
-          ui.bubble(keeperHead, 'Ghar roshan ho jayega! ✨', 2);
+          ui.bubble(keeperHead, slot('shout.lanterns'), 2);
           break;
         }
         case 'bangles': {
-          const i = await ui.menu('Choodi Gali', 'Which bangles would you like to try?', BANGLES);
+          const i = await ui.menu(st.def.name, 'Which bangles would you like to try?', named('bangles', BANGLES));
           if (i === null) break;
           st.keeper.setAction('give');
           audio.chaChing();
@@ -101,14 +121,14 @@ export class Shops {
             debris.burst(_v, { count: 10, colors: [BANGLES[i].color, 0xffd166, 0xffffff], speed: 0.8, up: 1.2, size: 0.025, life: 1, floor: player.pos.y });
           }
           player.char.setAction('cheer');
-          ui.bubble(keeperHead, 'Bahut sundar lag rahe hain! ✨', 2.2);
+          ui.bubble(keeperHead, slot('shout.bangles'), 2.2);
           await tasks.wait(1.4);
           player.char.clearAction();
           passport.stamp('bangles');
           break;
         }
         case 'toys': {
-          const i = await ui.menu('Gubbare & Khilone', 'Pick a balloon', BALLOONS);
+          const i = await ui.menu(st.def.name, 'Pick a balloon', named('toys', BALLOONS));
           if (i === null) break;
           await this.giveBalloon(st, BALLOONS[i].color);
           passport.stamp('balloon');
@@ -160,7 +180,7 @@ export class Shops {
     await tasks.wait(0.5);
     st.keeper.clearAction();
     const balloon = balloonMesh(color);
-    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), new THREE.LineBasicMaterial({ color: 0xdddddd }));
+    const line = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]), (STRING_MAT ??= new THREE.LineBasicMaterial({ color: 0xdddddd })));
     line.frustumCulled = false;
     const obj = new THREE.Group();
     obj.add(balloon, line);
@@ -246,6 +266,7 @@ export class Shops {
       player.char.clearAction();
       player.setBusy(false);
       passport.stamp('float');
+      track('activity', { what: 'diya_float' });
       ui.bubble((o) => player.headWorld(o), 'Bahta diya, bahti khushiyan 🌊', 2.4);
       return;
     }
@@ -258,7 +279,7 @@ export class Shops {
     if (slot) {
       slot.taken = true;
       obj.position.copy(slot.pos);
-      if (kind === 'kandeel') obj.position.y += 0.62;
+      if (kind === 'kandeel') obj.position.y += KANDEEL_DROP;
       obj.rotation.set(0, Math.PI / 2, 0);
       if (kind === 'kandeel') this.ctx.passport.stamp('kandeel');
     } else {
@@ -267,10 +288,12 @@ export class Shops {
       obj.rotation.set(0, player.heading, 0);
     }
     scene.add(obj);
+    this.batch.add(obj);
     this.remember(kind, color, obj);
     player.char.clearAction();
     player.setBusy(false);
     if (kind === 'diya') passport.stamp('diya');
+    track('activity', { what: `${kind}_placed`, wall: !!slot });
   }
 
   // ---------- persistence of placed things ----------
@@ -279,7 +302,10 @@ export class Shops {
     this.placed.push({ kind, color, obj });
     while (this.placed.length > MAX_PLACED) {
       const old = this.placed.shift();
+      const slot = this.ctx.walls?.slotOf(old.kind, old.obj.position);
+      if (slot) slot.taken = false;
       forgetFlames(old.obj);
+      this.batch.remove(old.obj);
       old.obj.removeFromParent();
     }
     try {
@@ -306,11 +332,13 @@ export class Shops {
       obj.position.set(s.x, s.y, s.z);
       obj.rotation.y = s.r;
       this.ctx.scene.add(obj);
+      this.batch.add(obj);
       this.placed.push({ kind: s.k, color: s.c, obj });
     }
   }
 
   update(dt, t) {
+    this.batch.update();
     for (let i = this.floaters.length - 1; i >= 0; i--) {
       const f = this.floaters[i];
       f.age += dt;
@@ -337,6 +365,7 @@ export class Shops {
       p.needsUpdate = true;
       if (f.age > 30) {
         f.obj.removeFromParent();
+        f.line.geometry.dispose(); // the balloon itself uses shared geometry and materials
         this.flyaways.splice(i, 1);
       }
     }

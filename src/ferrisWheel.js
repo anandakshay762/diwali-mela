@@ -1,7 +1,11 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { beamGeometry, canvasTexture, hdr, DAY } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
+import { lowDetail } from './lod.js';
+import { mergeStatic, freezeStatic, tintEmissive } from './merge.js';
 
 const R = 14; // wheel radius
 const H = 17.5; // hub height
@@ -86,7 +90,7 @@ export class FerrisWheel {
       ctx.fill();
     });
     for (const s of [-1, 1]) {
-      const disc = new THREE.Mesh(new THREE.CircleGeometry(1.35, 32), new THREE.MeshBasicMaterial({ map: sunTex, color: new THREE.Color(1.6, 1.6, 1.6) }));
+      const disc = new THREE.Mesh(new THREE.CircleGeometry(1.35, 32), new THREE.MeshBasicMaterial({ map: sunTex, color: new THREE.Color(1.15, 1.15, 1.15) }));
       disc.position.z = s * (HALF + 0.16);
       if (s < 0) disc.rotation.y = Math.PI;
       this.wheel.add(disc);
@@ -115,7 +119,7 @@ export class FerrisWheel {
         this.bulbData.push({ a, r: R * 0.45 });
       }
     }
-    this.bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial(), pts.length);
+    this.bulbs = new THREE.InstancedMesh(lowDetail() ? new THREE.IcosahedronGeometry(0.11, 0) : new THREE.SphereGeometry(0.11, 8, 6), new THREE.MeshBasicMaterial(), pts.length);
     const m4 = new THREE.Matrix4();
     pts.forEach((p, i) => {
       this.bulbs.setMatrixAt(i, m4.makeTranslation(p.x, p.y, p.z));
@@ -143,21 +147,35 @@ export class FerrisWheel {
     const lampMat = new THREE.MeshBasicMaterial({ color: hdr(0xffd08a, 3.5) });
     const gold = new THREE.MeshStandardMaterial({ color: 0xd4a017, metalness: 0.7, roughness: 0.3 });
 
+    // The 16 gondolas are drawn as 4 instanced meshes (cabins, posts, roofs, lamps) whose instance
+    // matrices follow the gondola Groups; the Groups stay as the swinging seat anchors.
     this.gondolas = [];
+    this.gondolaParts = [
+      new THREE.InstancedMesh(cabinGeo, new THREE.MeshStandardMaterial({ roughness: 0.45, metalness: 0.2 }), SPOKES),
+      new THREE.InstancedMesh(postGeo, gold, SPOKES),
+      // a roof glows faintly in its own colour: emissive (0.12) times the instance colour
+      new THREE.InstancedMesh(roofGeo, tintEmissive(new THREE.MeshStandardMaterial({ roughness: 0.5, emissive: new THREE.Color(0.12, 0.12, 0.12) })), SPOKES),
+      new THREE.InstancedMesh(lampGeo, lampMat, SPOKES),
+    ];
+    const [cabins, , roofs] = this.gondolaParts;
+    cabins.castShadow = roofs.castShadow = true;
     for (let i = 0; i < SPOKES; i++) {
       const a = (i / SPOKES) * TWO_PI;
-      const color = GONDOLA_COLORS[i % GONDOLA_COLORS.length];
+      const color = new THREE.Color(GONDOLA_COLORS[i % GONDOLA_COLORS.length]);
       const g = new THREE.Group();
       g.position.set(Math.cos(a) * R, Math.sin(a) * R, 0);
       g.userData = { angle: a, phase: Math.random() * 10 };
-      g.add(
-        new THREE.Mesh(cabinGeo, new THREE.MeshStandardMaterial({ color, roughness: 0.45, metalness: 0.2 })),
-        new THREE.Mesh(postGeo, gold),
-        new THREE.Mesh(roofGeo, new THREE.MeshStandardMaterial({ color, roughness: 0.5, emissive: new THREE.Color(color).multiplyScalar(0.12) })),
-        new THREE.Mesh(lampGeo, lampMat)
-      );
+      cabins.setColorAt(i, color);
+      roofs.setColorAt(i, color);
       this.wheel.add(g);
       this.gondolas.push(g);
+    }
+    this.syncGondolas();
+    for (const m of this.gondolaParts) {
+      // the gondolas only ever swing around their place on the rim, so one sphere covers them all
+      m.computeBoundingSphere();
+      m.boundingSphere.radius += 3;
+      this.wheel.add(m);
     }
 
     // boarding platform, steps and ticket booth
@@ -175,7 +193,7 @@ export class FerrisWheel {
     this.group.add(booth);
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(3.4, 0.95),
-      new THREE.MeshBasicMaterial({ map: signTexture('Giant Wheel', 'Press R or tap Ride Wheel', '#6a0d2b'), color: new THREE.Color(1.2, 1.2, 1.2) })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('ride.wheel.sign'), tk('Press R or tap Ride Wheel', 'Walk to the steps and tap the button', 'Ek chakkar aasmaan ka'), '#6a0d2b'), color: new THREE.Color(1, 1, 1) })
     );
     sign.position.set(5.5, 2.95, 5.92);
     this.group.add(sign);
@@ -192,13 +210,42 @@ export class FerrisWheel {
     this.gold = new THREE.Color(0xffb347);
     this.magenta = new THREE.Color(0xff2d95);
     this.cyan = new THREE.Color(0x35d6ff);
+
+    // platform, steps and booth: one mesh per material; the turning wheel stays live
+    mergeStatic(this.group, { skip: (o) => o === this.wheel });
+    freezeStatic(this.group, (o) => o === this.wheel); // skipping the group itself would skip everything
+  }
+
+  syncGondolas() {
+    for (let i = 0; i < this.gondolas.length; i++) {
+      const g = this.gondolas[i];
+      g.updateMatrix();
+      for (const m of this.gondolaParts) m.setMatrixAt(i, g.matrix);
+    }
+    for (const m of this.gondolaParts) m.instanceMatrix.needsUpdate = true;
   }
 
   update(dt, t) {
     this.wheel.rotation.z += this.speed * dt;
     const rz = this.wheel.rotation.z;
     for (const g of this.gondolas) g.rotation.z = -rz + Math.sin(t * 1.1 + g.userData.phase) * 0.035;
+    this.syncGondolas();
 
+    // bulb colours at 30 Hz (20 on phones), not every frame: the patterns read the same
+    if (t - (this.bulbT ?? -Infinity) >= (lowDetail() ? 1 / 20 : 1 / 30)) {
+      this.bulbT = t;
+      this.paintBulbs(t);
+    }
+    this.light.color.setHSL((t * 0.05) % 1, 0.8, 0.6);
+    this.light.intensity = 140 * DAY.lights;
+
+    if (this.ride) {
+      this.ride.angle += this.speed * dt;
+      if (this.ride.angle >= TWO_PI) this.ride.done = true;
+    }
+  }
+
+  paintBulbs(t) {
     const mode = Math.floor(t / 9) % 3;
     const c = this.tmp;
     for (let i = 0; i < this.bulbData.length; i++) {
@@ -215,13 +262,6 @@ export class FerrisWheel {
       this.bulbs.setColorAt(i, c.multiplyScalar(0.03 + 0.97 * DAY.lights));
     }
     this.bulbs.instanceColor.needsUpdate = true;
-    this.light.color.setHSL((t * 0.05) % 1, 0.8, 0.6);
-    this.light.intensity = 140 * DAY.lights;
-
-    if (this.ride) {
-      this.ride.angle += this.speed * dt;
-      if (this.ride.angle >= TWO_PI) this.ride.done = true;
-    }
   }
 
   /** Boards the gondola currently nearest the platform. */

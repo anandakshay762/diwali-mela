@@ -47,7 +47,7 @@ export class NameTag {
       this.texture.needsUpdate = true;
       return;
     }
-    this.sprite.visible = true;
+    this.sprite.visible = !this.hidden;
 
     const two = !!this.handle;
     const label = `topmate.io/${this.handle}`;
@@ -95,6 +95,15 @@ export class NameTag {
   }
 
   setVisible(v) {
+    this.hidden = !v;
     this.sprite.visible = v && !!this.name;
+  }
+
+  /** Frees the label's texture and material (for visitors who leave). */
+  dispose() {
+    this.sprite.removeFromParent();
+    this.texture.dispose();
+    this.sprite.material.dispose();
+    this.canvas.width = this.canvas.height = 0;
   }
 }

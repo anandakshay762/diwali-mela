@@ -1,3 +1,4 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { CSS3DRenderer, CSS3DObject } from 'three/addons/renderers/CSS3DRenderer.js';
 import { StringLights } from './stringLights.js';
@@ -5,7 +6,10 @@ import { Character, randomLook } from './character.js';
 import { diyaMesh } from './items.js';
 import { beam, hdr, setLayer, clamp, rand, pick, WARM_PALETTE } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
 import { SITES } from './world.js';
+import { mergeAdded } from './merge.js';
+import { track } from './track.js';
 
 export const PLAYLIST = 'PLFPJRCFRDARSZofcQcV6m7Pu2EAL8_1dv';
 const SCREEN_W = 12;
@@ -14,6 +18,7 @@ const SCREEN_Y = 2.0 + SCREEN_H / 2;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const std = (color, roughness = 0.7, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 const _v = new THREE.Vector3();
+const NEAR = 45; // metres from the screen: the video streams, plays and is composited only within this
 
 /*
   Ramleela Maidan: an open-air projector screen west of the gate. The video is a real YouTube
@@ -26,11 +31,13 @@ export class Ramayan {
     const { scene, world } = ctx;
     const R = SITES.ramleela;
     this.center = V(R.x, SCREEN_Y, R.z + 10);
+    this.stage = { cx: R.x, z: R.z + 10, top: SCREEN_Y + SCREEN_H / 2 + 0.8 }; // where the Ramleela board hangs
     this.seated = false;
     this.ready = false;
     this.shuffled = false;
     this.volume = -1;
     this.lights = new StringLights(scene);
+    const before = new Set(scene.children);
 
     // ---- screen, frame and the CSS3D video behind it ----
     const sx = R.x;
@@ -71,6 +78,13 @@ export class Ramayan {
     this.cssObj.rotation.y = Math.PI;
     this.cssObj.scale.setScalar(SCREEN_W / 1280);
     this.cssScene.add(this.cssObj);
+    this.near = true; // the screen starts shown; the first update() settles it
+    this.wanted = false; // start() was called: load the embed on the first approach
+    this.hidden = document.hidden;
+    document.addEventListener('visibilitychange', () => {
+      this.hidden = document.hidden;
+      this.playback();
+    });
 
     const lightsTop = [];
     for (let x = -SCREEN_W / 2 - 0.4; x <= SCREEN_W / 2 + 0.4; x += 0.4) lightsTop.push(V(sx + x, SCREEN_Y + SCREEN_H / 2 + 0.75, sz - 0.15));
@@ -151,7 +165,7 @@ export class Ramayan {
     // ---- sign, lights ----
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(5.6, 1.55),
-      new THREE.MeshBasicMaterial({ map: signTexture('Ramleela Maidan', 'Ramayan show · take a seat on any bench', '#4a0d0d'), color: new THREE.Color(1.2, 1.2, 1.2), side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.ramleela'), 'Ramayan show · take a seat on any bench', '#4a0d0d'), color: new THREE.Color(1.0, 1.0, 1.0), side: THREE.DoubleSide })
     );
     sign.position.set(R.x + 10, 3.2, 56);
     sign.rotation.y = Math.PI / 2;
@@ -165,6 +179,8 @@ export class Ramayan {
     const warm = new THREE.PointLight(0xffb46b, 40, 22, 2);
     warm.position.set(R.x, 3, 60);
     scene.add(warm);
+    // posts, benches, rugs, projector: one mesh per material look (the screen's hole stays its own)
+    mergeAdded(scene, before, { live: new Set([this.hole]) });
     this.lights.build();
 
     const gesture = () => {
@@ -207,8 +223,17 @@ export class Ramayan {
     });
   }
 
-  /** Called once the visitor has entered (a user gesture), so the embed may play with sound. */
+  /**
+   * Called once the visitor has entered (a user gesture), so the embed may play with sound. The
+   * iframe API and player load on the first approach to the screen, not here.
+   */
   start() {
+    this.wanted = true;
+    // not this.near: with ?play, start() runs before the first update() has settled it
+    if (this.seated || this.ctx.camera.position.distanceToSquared(this.center) < NEAR * NEAR) this.load();
+  }
+
+  load() {
     if (this.starting) return;
     this.starting = true;
     this.loadApi().then((YT) => {
@@ -236,7 +261,8 @@ export class Ramayan {
               e.target.unloadModule('cc');
               e.target.setShuffle(true);
               e.target.setLoop(true);
-              e.target.playVideo();
+              if (this.near && !this.hidden) e.target.playVideo();
+              else e.target.pauseVideo();
             } catch {
               // the embed may still be settling
             }
@@ -271,6 +297,7 @@ export class Ramayan {
       if (n > 1) this.player.playVideoAt(Math.floor(Math.random() * n));
       else this.player.nextVideo();
       this.ctx.ui.toast('📽️ Next episode…');
+      track('ramleela_seat', { action: 'next' });
     } catch {
       // ignore
     }
@@ -291,9 +318,11 @@ export class Ramayan {
     player.cam.pitch = 0.1;
     player.cam.targetDist = 5.5;
     this.seated = true;
+    this.seatedAt = performance.now();
     passport.stamp('ramayan');
+    track('ramleela_seat', { action: 'sit', video: this.nowPlaying().slice(0, 120) });
     const title = this.nowPlaying().split(/\s[-|–]\s/)[0].trim();
-    ui.toast(title ? `📽️ Now playing: ${title} · Press Q for another episode` : '📽️ Enjoy the show! Press Q for another episode.', 4500);
+    ui.toast(title ? `📽️ Now playing: ${title} · ${tk('Press Q for another episode', 'Tap “Next episode” for another')}` : tk('📽️ Enjoy the show! Press Q for another episode.', '📽️ Enjoy the show! Tap “Next episode” for another one.'), 4500);
   }
 
   standUp() {
@@ -303,6 +332,7 @@ export class Ramayan {
     this.taken = null;
     player.standUp(s.x, s.z - 1.0, 0);
     player.cam.targetDist = 5;
+    if (this.seated) track('ramleela_seat', { action: 'stand', secs: Math.round((performance.now() - this.seatedAt) / 1000) });
     this.seated = false;
   }
 
@@ -315,12 +345,34 @@ export class Ramayan {
   }
 
   get help() {
-    return [['E', 'Get up'], ['Q', 'Next episode'], ['Drag', 'Look around']];
+    return { key: [['E', 'Get up'], ['Q', 'Next episode'], ['Drag', 'Look around']], tap: [['👆', 'Get up'], ['⏭️', 'Next episode'], ['👉', 'Drag to look around']] };
+  }
+
+  /** Plays the video only while the screen is near and the tab is visible. */
+  playback() {
+    if (!this.ready) return;
+    try {
+      if (this.near && !this.hidden) this.player.playVideo();
+      else this.player.pauseVideo();
+    } catch {
+      // the embed may still be settling
+    }
   }
 
   // ---------- per frame ----------
 
   update(dt, t, { started, muted }) {
+    const cam = this.ctx.camera.position;
+    const near = this.seated || cam.distanceToSquared(this.center) < NEAR * NEAR;
+    if (near !== this.near) {
+      this.near = near;
+      // far away: no iframe to composite and no CSS3D pass; the dark screen frame shows instead
+      this.el.style.display = near ? '' : 'none';
+      this.hole.visible = near;
+      if (near && this.wanted) this.load();
+      this.playback();
+    }
+
     this.lights.update(t);
     this.glow.intensity = 60 + Math.sin(t * 7) * 6;
     for (const ch of this.audience) ch.update(dt);
@@ -367,7 +419,7 @@ export class Ramayan {
   }
 
   render(camera) {
-    this.cssRenderer.render(this.cssScene, camera);
+    if (this.near) this.cssRenderer.render(this.cssScene, camera);
   }
 
   resize() {

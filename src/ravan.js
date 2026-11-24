@@ -1,8 +1,11 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { shape, merged } from './character.js';
 import { beam, canvasTexture, rand, setLayer, pick } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
 import { CONFIG } from './config.js';
+import { track } from './track.js';
 
 /*
   Ravan Dahan: a twelve-metre effigy on the Ramleela maidan that burns on a schedule, with
@@ -107,7 +110,7 @@ export class Ravan {
 
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(3.6, 1.0),
-      new THREE.MeshBasicMaterial({ map: signTexture('Ravan Dahan', 'Burns on the hour · press E to light the fuse', '#4a0d0d', '#ffe7a3', 1024, 288), color: new THREE.Color(1.2, 1.2, 1.2), side: THREE.DoubleSide })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.ravan'), tk('Burns on the hour · press E to light the fuse', 'Burns on the hour · tap the button to light the fuse'), '#4a0d0d', '#ffe7a3', 1024, 288), color: new THREE.Color(1, 1, 1), side: THREE.DoubleSide })
     );
     sign.position.set(POS.x + 5.5, 2.4, POS.z + 1);
     sign.rotation.y = Math.PI / 2;
@@ -144,7 +147,8 @@ export class Ravan {
     this.nextAt = performance.now() + 15000;
     this.warned = true;
     ui.toast('🔥 The fuse is lit! Ravan Dahan in 15 seconds at the Ramleela Maidan', 5000, { important: true });
-    this.ctx.net?.sendBubble('Ravan Dahan in 15 seconds! 🔥');
+    this.ctx.net?.sendBubble('Ravan Dahan in 15 seconds! 🔥', 'ravan');
+    track('activity', { what: 'ravan_fuse' });
     player.char.setAction('cheer');
     setTimeout(() => player.char.action === 'cheer' && player.char.clearAction(), 1500);
   }
@@ -218,6 +222,7 @@ export class Ravan {
       if (!this.stamped && Math.hypot(player.pos.x - POS.x, player.pos.z - POS.z) < 45) {
         this.stamped = true;
         passport.stamp('ravan');
+        track('activity', { what: 'ravan_watched' });
         debris.burst(player.headWorld(new THREE.Vector3()), { count: 30, colors: [0xffd166, 0xff6d00, 0xffffff], speed: 2.5, up: 3, size: 0.06, flat: true, life: 2.5, floor: player.pos.y });
       }
       if (T > 46) {

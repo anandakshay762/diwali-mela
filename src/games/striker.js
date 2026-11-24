@@ -1,6 +1,8 @@
+import { tk } from '../touch.js';
 import * as THREE from 'three';
 import { hammerMesh } from '../items.js';
 import { canvasTexture } from '../utils.js';
+import { lowDetail } from '../lod.js';
 
 const G = 9.8;
 const SWINGS = 3;
@@ -25,6 +27,8 @@ export class Striker {
     this.title = '🔔 Taakat Pariksha';
     this.help = `Click, tap or press Space when the power is in the green zone. ${SWINGS} swings to ring the bell!`;
     this.helpLines = [['Click', 'Swing the hammer'], ['Space', 'Swing'], ['Esc', 'Leave']];
+    this.tapHelp = `Tap anywhere when the power is in the green zone. ${SWINGS} swings to ring the bell!`;
+    this.tapLines = [['👆', 'Tap to swing'], ['✕', 'Leave']];
     const g = booth.group;
 
     const scale = canvasTexture(128, 1024, (c, w, h) => {
@@ -68,7 +72,7 @@ export class Striker {
     // bulbs up both sides light to the height the puck reaches
     const pts = [];
     for (const x of [-0.5, 0.5]) for (let i = 0; i < 22; i++) pts.push(new THREE.Vector3(x, BASE_Y + (i / 21) * (BELL_Y - BASE_Y), -1.78));
-    this.bulbs = new THREE.InstancedMesh(new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial(), pts.length);
+    this.bulbs = new THREE.InstancedMesh(lowDetail() ? new THREE.IcosahedronGeometry(0.06, 0) : new THREE.SphereGeometry(0.06, 8, 6), new THREE.MeshBasicMaterial(), pts.length);
     pts.forEach((p, i) => {
       this.bulbs.setMatrixAt(i, new THREE.Matrix4().makeTranslation(p.x, p.y, p.z));
       this.bulbs.setColorAt(i, new THREE.Color(1, 1, 1));
@@ -186,10 +190,11 @@ export class Striker {
     this.finish({
       icon: this.rang ? '🔔' : '💪',
       title: this.rang ? 'You rang the bell!' : `Best: ${rank(this.best)}`,
-      text: this.rang ? 'Asli Bahubali! You won a gift box 🎁' : 'Swing in the green zone to ring the bell. Again?',
+      text: this.rang ? `Asli Bahubali! You won ${this.prizeName ?? 'a gift box'} 🎁` : 'Swing in the green zone to ring the bell. Again?',
       win: this.rang,
       prize: 'gift',
       stamp: 'striker',
+      score: +this.best.toFixed(3),
     });
   }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { Reflector } from 'three/addons/objects/Reflector.js';
+import { settings } from './settings.js';
 
 /*
   The river: a planar reflection (Reflector) whose projected image is pushed around by an
@@ -136,7 +137,8 @@ const fragmentShader = /* glsl */ `
     #include <fog_fragment>
   }`;
 
-export function createWater(scene, { width = 600, depth = 112, y = -1.35, z = -105, resolution = 0.5 } = {}) {
+// The wave normals smear the reflection anyway, so phones skip its 4x MSAA.
+export function createWater(scene, { width = 600, depth = 112, y = -1.35, z = -105, resolution = 0.5, multisample = settings.tier === 'low' ? 0 : 4 } = {}) {
   const uniforms = {
     color: { value: null },
     tDiffuse: { value: null },
@@ -152,6 +154,7 @@ export function createWater(scene, { width = 600, depth = 112, y = -1.35, z = -1
     textureWidth: Math.floor(innerWidth * resolution),
     textureHeight: Math.floor(innerHeight * resolution),
     color: 0x10283a,
+    multisample,
     shader: { name: 'MelaWater', uniforms, vertexShader, fragmentShader },
   });
   mesh.material.fog = true;
@@ -159,11 +162,35 @@ export function createWater(scene, { width = 600, depth = 112, y = -1.35, z = -1
   mesh.position.set(0, y, z);
   scene.add(mesh);
   const u = mesh.material.uniforms;
+
+  // The reflection is a whole second render of the scene. The waves smear it and its texture matrix
+  // stays matched to the image it last drew, so redrawing it every 2nd or 3rd frame is not visible:
+  // every frame near the river on high, less often from further away and on phones.
+  const low = settings.tier === 'low';
+  const reflect = mesh.onBeforeRender;
+  let frame = 0;
+  let drawn = -1e9;
+  const due = (camera) => {
+    const p = camera.position;
+    const dx = Math.max(0, Math.abs(p.x) - width / 2);
+    const dz = Math.max(0, Math.abs(p.z - z) - depth / 2);
+    const far = dx * dx + dz * dz > 60 * 60;
+    return frame - drawn >= (low ? 2 : 1) + (far ? 1 : 0);
+  };
+  mesh.onBeforeRender = function (renderer, sc, camera, ...rest) {
+    if (!due(camera)) return;
+    drawn = frame;
+    reflect.call(this, renderer, sc, camera, ...rest);
+  };
+
   return {
     mesh,
     update(t) {
       u.time.value = t;
+      frame++;
     },
+    /** True when the river will redraw its reflection in this frame's render (if it is in view). */
+    reflectDue: due,
     setBoat(x, z, strength) {
       u.uBoat.value.set(x, strength, z);
     },

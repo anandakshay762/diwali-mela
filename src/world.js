@@ -7,10 +7,15 @@ import { Garlands } from './garlands.js';
 import { Diyas } from './diyas.js';
 import { createStall, signTexture, STALL } from './stalls.js';
 import { FerrisWheel } from './ferrisWheel.js';
+import { mergeStatic, freezeStatic, mergeAdded } from './merge.js';
+import { seg } from './lod.js';
+import { slot } from './personalSlots.js';
+import { themedGoods } from './stallThemes.js';
+import { buildFestive } from './festive.js';
 
 /*
   Layout (metres, +z towards the entrance):
-    gate z=58 → bazaar z 47..17 → rangoli chowk at origin → cross path z=-18
+    gate z=58 → bazaar z 47..17 → the chowk (deepstambh) at origin → cross path z=-18
     (giant wheel west, fireworks field east) → ghat steps at z=-44 → river.
 */
 export const SITES = {
@@ -42,9 +47,28 @@ const BOUNDS = { minX: -70, maxX: 70, minZ: -50.3, maxZ: 78 };
 
 /** Walkable height: flat ground everywhere except the ghat steps down to the river. */
 function groundHeight(x, z) {
-  if (z >= -44) return 0;
+  if (z >= -44 || Math.abs(x) > 42) return 0; // past the ends of the steps: the stone quay
   const step = Math.min(6, Math.floor((-44 - z) / 1.3));
   return -0.3 * step;
+}
+
+/** The river's surface (createWater's default y; boat.js rides it too). */
+export const WATER_Y = -1.35;
+
+/**
+ * Open water under (x, z): south of the waterline along the ghat steps (the fifth step, top -1.5,
+ * is under water), south of the quay face past their ends, and north of the far bank. The jetty is
+ * counted as water too: a 2.6 m plank walk is no helipad.
+ */
+export function overWater(x, z) {
+  if (z < -160) return false; // the far bank
+  return Math.abs(x) <= 42 ? z < -50.5 : z < -49.4;
+}
+
+/** What a flying vehicle settles on: the river's surface over water, the bank and steps elsewhere. */
+function flyFloor(x, z) {
+  if (z < -160) return 0;
+  return overWater(x, z) ? WATER_Y : groundHeight(x, z);
 }
 
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
@@ -75,7 +99,9 @@ export function buildWorld(scene, { reflectionScale = 0.5 } = {}) {
     colliders: [],
     updaters: [],
     stalls: [],
+    live: new Set(), // world meshes that move or change: kept out of the static merge
   };
+  const before = new Set(scene.children);
 
   buildGround(ctx);
   buildGate(ctx);
@@ -85,24 +111,32 @@ export function buildWorld(scene, { reflectionScale = 0.5 } = {}) {
   buildFireworksField(ctx);
   buildGhat(ctx);
   buildSideAreas(ctx);
+  mergeWorld(ctx, before);
 
   const wheel = new FerrisWheel(scene, SITES.wheel);
   ctx.colliders.push(...wheel.colliders);
+
+  ctx.poleAt = (x, z, h) => pole(ctx, x, z, h);
+  const stillDiyas = buildFestive(ctx, { site: SITES });
 
   buildPoles(ctx);
   ctx.lights.build();
   ctx.garlands.build();
   ctx.diyas.build();
   ctx.floating.build();
+  stillDiyas.build();
 
   return {
     colliders: ctx.colliders,
     stalls: ctx.stalls,
+    diyas: ctx.diyas,
     wheel,
     water: ctx.water,
     bounds: BOUNDS,
     tall: TALL,
     groundHeight,
+    flyFloor,
+    overWater,
     collide: (p, r) => collide(ctx.colliders, BOUNDS, p, r),
     collideFlying: (p, r, y) => collideFlying(ctx.colliders, TALL, p, r, y),
     update(dt, t) {
@@ -118,6 +152,15 @@ export function buildWorld(scene, { reflectionScale = 0.5 } = {}) {
 
 // ---------- helpers ----------
 
+/**
+ * Folds the loose static meshes the builders above dropped into the scene (gate boxes, field posts,
+ * ghat steps, lamps...) into one mesh per material look per 40 m cell: far fewer draw calls in the
+ * main pass, the shadow pass and the river reflection, while regions still get culled.
+ */
+function mergeWorld(ctx, before) {
+  mergeAdded(ctx.scene, before, { live: ctx.live, cell: 40 });
+}
+
 /** Registers a decorated light pole (drawn later as one instanced mesh) and returns its top. */
 function pole(ctx, x, z, h) {
   ctx.poles.push({ x, z, h });
@@ -128,7 +171,7 @@ function pole(ctx, x, z, h) {
 function buildPoles(ctx) {
   const n = ctx.poles.length;
   const shaft = new THREE.InstancedMesh(new THREE.CylinderGeometry(0.07, 0.1, 1, 8).translate(0, 0.5, 0), std(0x5a3b26, 0.8), n);
-  const cap = new THREE.InstancedMesh(new THREE.SphereGeometry(0.14, 10, 8), std(0xd4a017, 0.3, { metalness: 0.7 }), n);
+  const cap = new THREE.InstancedMesh(new THREE.SphereGeometry(0.14, seg(10, 8), seg(8, 5)), std(0xd4a017, 0.3, { metalness: 0.7 }), n);
   const m = new THREE.Matrix4();
   ctx.poles.forEach((p, i) => {
     shaft.setMatrixAt(i, m.makeScale(1, p.h, 1).setPosition(p.x, 0, p.z));
@@ -250,15 +293,19 @@ function buildGate(ctx) {
       c.fillStyle = '#ffd166';
       c.shadowColor = 'rgba(255,150,40,0.8)';
       c.shadowBlur = 18;
-      c.font = '72px "Yatra One", serif';
-      c.fillText(title, w / 2, h * 0.36);
-      c.font = '600 46px Poppins, sans-serif';
-      c.fillText(sub, w / 2, h * 0.76);
+      // personal text can be longer than the stock lines: shrink to fit the arch
+      const fit = (text, size, font, y) => {
+        do c.font = font(size);
+        while (c.measureText(text).width > w - 70 && (size -= 2) > 20);
+        c.fillText(text, w / 2, y);
+      };
+      fit(title, 72, (n) => `${n}px "Yatra One", serif`, h * 0.36);
+      fit(sub, 46, (n) => `600 ${n}px Poppins, sans-serif`, h * 0.76);
     });
-  const front = new THREE.Mesh(new THREE.PlaneGeometry(13, 2.1), new THREE.MeshBasicMaterial({ map: gateSign('शुभ दीपावली', '✦  TOPMATE DIWALI MELA  ✦'), color: new THREE.Color(1.25, 1.25, 1.25) }));
+  const front = new THREE.Mesh(new THREE.PlaneGeometry(13, 2.1), new THREE.MeshBasicMaterial({ map: gateSign(slot('gate.title'), `✦  ${slot('gate.subtitle')}  ✦`), color: new THREE.Color(1, 1, 1) }));
   front.position.set(0, 8.6, z + 0.66);
   scene.add(front);
-  const back = new THREE.Mesh(new THREE.PlaneGeometry(13, 2.1), new THREE.MeshBasicMaterial({ map: gateSign('फिर मिलेंगे!', 'Happy Diwali from Topmate · See you again'), color: new THREE.Color(1.25, 1.25, 1.25) }));
+  const back = new THREE.Mesh(new THREE.PlaneGeometry(13, 2.1), new THREE.MeshBasicMaterial({ map: gateSign('फिर मिलेंगे!', slot('gate.back')), color: new THREE.Color(1, 1, 1) }));
   back.position.set(0, 8.6, z - 0.66);
   back.rotation.y = Math.PI;
   scene.add(back);
@@ -290,8 +337,11 @@ function buildBazaar(ctx) {
   for (let k = 0; k < 4; k++) {
     const z = 47 - k * 10;
     for (const side of [-1, 1]) {
-      const def = side < 0 ? LEFT_STALLS[k] : RIGHT_STALLS[k];
-      const stall = createStall(def);
+      const base = side < 0 ? LEFT_STALLS[k] : RIGHT_STALLS[k];
+      // a creator's mela may rename the stall and (shop stalls) stock it for their niche
+      const def = { ...base, name: slot(`stall.${base.goods}.title`), sub: slot(`stall.${base.goods}.sub`) };
+      const theme = slot(`stall.${base.goods}.theme`);
+      const stall = createStall(def, theme ? themedGoods(theme, 0x9e37 + k * 2 + (side > 0)) : null);
       const g = stall.group;
       g.position.set(side * 9.2, 0, z);
       g.rotation.y = side < 0 ? Math.PI / 2 : -Math.PI / 2;
@@ -311,6 +361,8 @@ function buildBazaar(ctx) {
         def,
         group: g,
         keeper: stall.keeper,
+        sign: stall.sign,
+        diyaSpots: stall.diyaSpots.map(w),
         stand: w(new THREE.Vector3(0, 0, D / 2 + 1.1)), // where a customer stands
         center: w(new THREE.Vector3(0, 0, D / 2 - 0.45)), // the counter
       });
@@ -319,66 +371,7 @@ function buildBazaar(ctx) {
   }
 }
 
-// ---------- rangoli chowk ----------
-
-function rangoliTexture() {
-  return canvasTexture(1024, 1024, (c, w, h) => {
-    c.translate(w / 2, h / 2);
-    const disc = (r, color) => {
-      c.fillStyle = color;
-      c.beginPath();
-      c.arc(0, 0, r, 0, Math.PI * 2);
-      c.fill();
-    };
-    const ring = (r, n, len, wid, color, offset = 0) => {
-      c.fillStyle = color;
-      for (let i = 0; i < n; i++) {
-        c.save();
-        c.rotate((i / n) * Math.PI * 2 + offset);
-        c.beginPath();
-        c.ellipse(r + len / 2, 0, len / 2, wid / 2, 0, 0, Math.PI * 2);
-        c.fill();
-        c.restore();
-      }
-    };
-    const dots = (r, n, size, color, offset = 0) => {
-      c.fillStyle = color;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * Math.PI * 2 + offset;
-        c.beginPath();
-        c.arc(Math.cos(a) * r, Math.sin(a) * r, size, 0, Math.PI * 2);
-        c.fill();
-      }
-    };
-    disc(508, '#3a0f4f');
-    dots(492, 96, 7, '#fff7e0');
-    ring(380, 24, 100, 56, '#e0218a');
-    ring(392, 24, 70, 26, '#ffd166');
-    disc(380, '#ff7a00');
-    ring(270, 16, 105, 70, '#1f9d55');
-    ring(285, 16, 70, 30, '#b7f5c9');
-    ring(300, 16, 60, 22, '#ffd166', Math.PI / 16);
-    dots(372, 48, 6, '#fff7e0');
-    disc(270, '#c1121f');
-    ring(160, 12, 105, 60, '#ffd166');
-    ring(172, 12, 70, 24, '#ff7a00');
-    dots(262, 32, 6, '#fff7e0');
-    disc(160, '#3a86ff');
-    ring(70, 8, 85, 50, '#ffffff');
-    ring(70, 8, 70, 30, '#8ecae6', Math.PI / 8);
-    dots(152, 24, 6, '#fff7e0');
-    disc(70, '#ffd166');
-    disc(40, '#e0218a');
-    disc(16, '#ffffff');
-    // powdery grain
-    for (let i = 0; i < 20000; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const r = Math.sqrt(Math.random()) * 505;
-      c.fillStyle = Math.random() > 0.5 ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.1)';
-      c.fillRect(Math.cos(a) * r, Math.sin(a) * r, 2, 2);
-    }
-  });
-}
+// ---------- the chowk ----------
 
 function buildPlaza(ctx) {
   const { scene, lights, diyas } = ctx;
@@ -410,14 +403,31 @@ function buildPlaza(ctx) {
   paving.position.y = 0.04;
   scene.add(paving);
 
-  const tex = rangoliTexture();
-  const rangoli = new THREE.Mesh(
-    new THREE.CircleGeometry(5, 96),
-    std(0xffffff, 1, { map: tex, emissive: 0xffffff, emissiveMap: tex, emissiveIntensity: 0.18, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 })
-  );
-  rangoli.rotation.x = -Math.PI / 2;
-  rangoli.position.y = 0.06;
-  scene.add(rangoli);
+  // the centrepiece: a two-tier stone chabutra with a deepstambh (a lamp pillar ringed with diya
+  // trays). One material, so the whole thing merges into a single draw call with its cell.
+  const sand = std(0xcdb08a, 0.85);
+  const piece = (geo, y) => {
+    const m = new THREE.Mesh(geo, sand);
+    m.position.y = y;
+    scene.add(m);
+  };
+  piece(new THREE.CylinderGeometry(2.4, 2.6, 0.36, seg(40, 24)), 0.18);
+  piece(new THREE.CylinderGeometry(1.5, 1.6, 0.3, seg(32, 20)), 0.51);
+  piece(new THREE.CylinderGeometry(0.16, 0.26, 2.0, seg(14, 10)), 1.66);
+  const trays = [[1.05, 0.62], [1.5, 0.46], [1.95, 0.32], [2.45, 0.2]];
+  for (const [y, r] of trays) piece(new THREE.CylinderGeometry(r, r * 0.8, 0.07, seg(20, 12)), y);
+  for (const [y, r] of trays) {
+    const n = Math.round(r * 22);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      diyas.add(Math.cos(a) * (r - 0.06), y + 0.04, Math.sin(a) * (r - 0.06));
+    }
+  }
+  for (let i = 0; i < 28; i++) {
+    const a = ((i + 0.5) / 28) * Math.PI * 2;
+    diyas.add(Math.cos(a) * 2.3, 0.36, Math.sin(a) * 2.3);
+  }
+  ctx.colliders.push({ type: 'circle', x: 0, z: 0, r: 2.7 });
 
   for (let i = 0; i < 40; i++) {
     const a = (i / 40) * Math.PI * 2;
@@ -440,7 +450,7 @@ function buildPlaza(ctx) {
     if (i < N / 2) lights.addStrand(tops[i], tops[i + N / 2], { sag: 2.6, spacing: 0.6 });
   }
 
-  // hanging star lantern (akash kandil) above the rangoli
+  // hanging star lantern (akash kandil) above the deepstambh
   const shape = new THREE.Shape();
   for (let i = 0; i < 10; i++) {
     const r = i % 2 ? 0.42 : 1;
@@ -451,11 +461,12 @@ function buildPlaza(ctx) {
   const starGeo = new THREE.ExtrudeGeometry(shape, { depth: 0.3, bevelEnabled: true, bevelSize: 0.06, bevelThickness: 0.06, bevelSegments: 2 });
   starGeo.center();
   const star = new THREE.Mesh(starGeo, new THREE.MeshBasicMaterial({ color: hdr(0xff6a1c, 2.4) }));
-  star.position.set(0, 3.6, 0);
+  star.position.set(0, 4.0, 0);
   scene.add(star);
+  ctx.live.add(star);
   ctx.updaters.push((dt, t) => {
     star.rotation.y = t * 0.4;
-    star.position.y = 3.6 + Math.sin(t * 0.8) * 0.05;
+    star.position.y = 4.0 + Math.sin(t * 0.8) * 0.05;
   });
   warmLight(scene, 0, 6, 0, 70, 30, 0xffa860);
 }
@@ -464,20 +475,21 @@ function buildPlaza(ctx) {
 
 function buildLanes(ctx) {
   const { lights } = ctx;
-  const lane = (zs) => {
+  const lane = (zs, open = -1) => {
     const L = zs.map((z) => pole(ctx, -5.6, z, 5.5));
     const R = zs.map((z) => pole(ctx, 5.6, z, 5.5));
     for (let i = 0; i < zs.length; i++) {
-      lights.addStrand(L[i], R[i], { sag: 0.8 });
+      if (i !== open) lights.addStrand(L[i], R[i], { sag: 0.8 }); // (open: nothing across the front of the Mela Screen)
       if (i + 1 < zs.length) {
         lights.addStrand(L[i], L[i + 1], { sag: 0.5 });
         lights.addStrand(R[i], R[i + 1], { sag: 0.5 });
+        if (i === open) continue; // no criss-cross here: the Mela Screen hangs in this bay
         lights.addStrand(L[i], R[i + 1], { sag: 1.1 });
         lights.addStrand(R[i], L[i + 1], { sag: 1.1 });
       }
     }
   };
-  lane([53, 43, 33, 23, 15]);
+  lane([53, 43, 33, 23, 15], 0);
   lane([-14, -24, -34]);
 
   // along the cross path to the wheel and the fireworks field
@@ -526,7 +538,7 @@ function buildFireworksField(ctx) {
 
   const sign = new THREE.Mesh(
     new THREE.PlaneGeometry(3.8, 1.05),
-    new THREE.MeshBasicMaterial({ map: signTexture('Fireworks Zone', 'Rockets launch here · stand back!', '#4a0d0d'), color: new THREE.Color(1.2, 1.2, 1.2) })
+    new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.fireworks'), slot('sign.fireworks.sub'), '#4a0d0d'), color: new THREE.Color(1, 1, 1) })
   );
   sign.position.set(c.x, 1.9, c.z + half + 0.4);
   scene.add(sign);
@@ -546,6 +558,16 @@ function buildGhat(ctx) {
     const step = new THREE.Mesh(new THREE.BoxGeometry(84, 0.3, 1.3), stone);
     step.position.set(0, -0.15 - i * 0.3, -44.65 - i * 1.3);
     scene.add(step);
+  }
+  // past both ends of the steps the bank is a stone quay down to the water, so the ground doesn't
+  // stop in mid-air there and the boat has a real edge to bump into. Walkers stop at its lip and
+  // can't step off the end of a step onto it (or into the void).
+  for (const s of [-1, 1]) {
+    const quay = new THREE.Mesh(new THREE.BoxGeometry(258, 2, 5.4), stone);
+    quay.position.set(s * 171, -1, -46.7);
+    scene.add(quay);
+    colliders.push({ type: 'box', minX: s > 0 ? 42 : -80, maxX: s > 0 ? 80 : -42, minZ: -60, maxZ: -49.4 });
+    colliders.push({ type: 'box', minX: s * 42 - 0.15, maxX: s * 42 + 0.15, minZ: -53.2, maxZ: -45.95 });
   }
 
   const water = createWater(scene, { resolution: ctx.reflectionScale });
@@ -573,6 +595,7 @@ function buildGhat(ctx) {
   foam.position.set(0, -1.34, -50.95);
   foam.renderOrder = 2;
   scene.add(foam);
+  ctx.live.add(foam);
   ctx.updaters.push((dt, t) => {
     foam.position.z = -50.95 + Math.sin(t * 0.9) * 0.12;
     foam.material.opacity = 0.28 + 0.14 * Math.sin(t * 0.9 + 1.2);
@@ -584,7 +607,7 @@ function buildGhat(ctx) {
   for (const s of [-1, 1]) {
     const tops = [6, 14, 22, 30].map((x) => {
       const top = pole(ctx, s * x, -42.6, 4);
-      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, 12, 10), lampMat);
+      const lamp = new THREE.Mesh(new THREE.SphereGeometry(0.22, seg(12, 8), seg(10, 6)), lampMat);
       lamp.position.set(top.x, top.y + 0.35, top.z);
       scene.add(lamp);
       return top;
@@ -597,6 +620,15 @@ function buildGhat(ctx) {
 
   for (let x = -38; x <= 38; x += 1.2) diyas.add(x, 0, -44.2);
   for (let i = 0; i < 160; i++) floating.add(rand(-50, 50), -1.33, rand(-53, -95));
+
+  // the ghat's own signboard at the top of the steps, west of the walkway (the boat jetty's is east)
+  const gs = new THREE.Mesh(new THREE.PlaneGeometry(3.2, 0.9), new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.ghat'), slot('sign.ghat.sub'), '#13306b'), color: new THREE.Color(1, 1, 1), side: THREE.DoubleSide }));
+  gs.position.set(-10, 2.3, -43.3);
+  scene.add(gs);
+  for (const dx of [-1.45, 1.45]) {
+    scene.add(beam(V(-10 + dx, 0, -43.32), V(-10 + dx, 2.75, -43.32), 0.05, std(0x3d2a1c)));
+    colliders.push({ type: 'circle', x: -10 + dx, z: -43.32, r: 0.12 });
+  }
 
   buildTemple(ctx, -18, -37);
 }
@@ -658,6 +690,8 @@ function buildTemple(ctx, x, z) {
     diyas.add(p.x, p.y, p.z);
   }
   colliders.push({ type: 'box', minX: x - 2.6, maxX: x + 3.4, minZ: z - 2.6, maxZ: z + 2.6 });
+  mergeStatic(g, { skip: (o) => o === flag });
+  freezeStatic(g, (o) => o === flag);
 }
 
 // ---------- side areas: games lane (east) and carousel ground (west) ----------

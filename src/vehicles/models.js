@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { shape, merged } from '../character.js';
 import { hdr, canvasTexture } from '../utils.js';
+import { slot, slotSet } from '../personalSlots.js';
 
 /*
   Low-poly vehicles in the Sketchbook spirit. Local +z is forward, matching the player's heading
@@ -8,7 +9,7 @@ import { hdr, canvasTexture } from '../utils.js';
 */
 
 export const vehicleMaterial = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.45, metalness: 0.25 });
-const glassMat = new THREE.MeshStandardMaterial({ color: 0x152233, roughness: 0.15, metalness: 0.4 });
+export const glassMat = new THREE.MeshStandardMaterial({ color: 0x152233, roughness: 0.15, metalness: 0.4 });
 const blurMat = new THREE.MeshBasicMaterial({ color: 0x222222, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
 const lampMat = (hex, k = 4) => new THREE.MeshBasicMaterial({ color: hdr(hex, k) });
 
@@ -27,7 +28,9 @@ function decal(text, sub, bg) {
     c.textAlign = 'center';
     c.textBaseline = 'middle';
     c.fillStyle = '#fff1c1';
-    c.font = '56px "Yatra One", serif';
+    let size = 56; // a personal name may be longer than the stock one: shrink to fit the plate
+    do c.font = `${size}px "Yatra One", serif`;
+    while (c.measureText(text).width > w - 40 && (size -= 2) > 22);
     c.fillText(text, w / 2, sub ? 48 : h / 2);
     if (sub) {
       c.font = '600 24px Poppins, sans-serif';
@@ -38,7 +41,7 @@ function decal(text, sub, bg) {
 }
 
 function decalPlane(tex, w, h) {
-  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1.15, 1.15, 1.15) }));
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, color: new THREE.Color(1, 1, 1) }));
 }
 
 // ---------- Chakri Racer (car) ----------
@@ -126,20 +129,23 @@ export function carModel(color = 0xe63946) {
     wheels.push({ pivot, mesh: w, front });
   }
 
-  const head = new THREE.SpotLight(0xfff0c8, 0, 28, 0.55, 0.5, 1.2);
+  // where the headlight sits and points; the one shared headlight (vehicles.js) moves to whichever
+  // car is being driven, so parked cars carry no light at all
+  const head = new THREE.Object3D();
   head.position.set(0, 0.8, 1.6);
-  head.target.position.set(0, 0, 14);
-  g.add(head, head.target);
+  const headTarget = new THREE.Object3D();
+  headTarget.position.set(0, 0, 14);
+  g.add(head, headTarget);
 
   const seat = new THREE.Object3D();
   seat.position.set(0.32, 0.4, -0.4);
   g.add(seat);
 
-  const plate = decalPlane(decal('Chakri Racer', null, '#5c0a10'), 0.9, 0.22);
+  const plate = decalPlane(decal(slot('ride.cars.plate'), null, '#5c0a10'), 0.9, 0.22);
   plate.position.set(0, 0.6, -1.87);
   plate.rotation.y = Math.PI;
   g.add(plate);
-  return { group: g, seat, parts: { wheels, head, body, door } };
+  return { group: g, seat, parts: { wheels, head, headTarget, body, door } };
 }
 
 // ---------- Pushpak Heli ----------
@@ -189,7 +195,9 @@ export function heliModel(color = 0xd9a21b, stripe = 0xb3122e) {
   g.add(tailRotor);
 
   g.add(ball(0xff2020, 3, 0.06, -1.0, 1.52, -0.1), ball(0x20ff40, 3, 0.06, 1.0, 1.52, -0.1), ball(0xffffff, 4, 0.05, 0, 1.4, -4.5));
-  const search = new THREE.SpotLight(0xfff0c8, 0, 60, 0.42, 0.45, 1.0);
+  // searchlight: warm, wide and soft-edged (penumbra near 1) so it reads as a gentle pool on the
+  // ground; its strength is set in vehicles.js (SEARCH_ON)
+  const search = new THREE.SpotLight(0xffe4b8, 0, 45, 0.5, 0.9, 1.3);
   search.position.set(0, 0.5, 0.9);
   search.target.position.set(0, -12, 12);
   g.add(search, search.target);
@@ -260,7 +268,7 @@ export function planeModel(color = 0xe0b030, wing = 0xb3122e) {
   seat.position.set(0, 0.92, 0.15);
   g.add(seat);
   for (const s of [-1, 1]) {
-    const plate = decalPlane(decal('Pushpak Viman', 'पुष्पक विमान', '#6a0d2b'), 1.5, 0.37);
+    const plate = decalPlane(decal(slot('ride.viman.plate'), slotSet('ride.viman.plate') ? null : 'पुष्पक विमान', '#6a0d2b'), 1.5, 0.37);
     plate.position.set(s * 0.49, 1.1, -0.9);
     plate.rotation.y = (s * Math.PI) / 2;
     g.add(plate);

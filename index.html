@@ -2,12 +2,35 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+    <meta name="theme-color" content="#0c0614" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="format-detection" content="telephone=no" />
     <title>Topmate Diwali Mela</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22%3E%3Ctext y=%22.9em%22 font-size=%2290%22%3E%F0%9F%AA%94%3C/text%3E%3C/svg%3E" />
     <meta name="description" content="A virtual Diwali mela by Topmate: rides, stalls, games, fireworks, a Ramayan show and the Pushpak Viman." />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&family=Yatra+One&display=swap" rel="stylesheet" />
+    <!-- Self-hosted Poppins + Yatra One (OFL, see public/fonts), split by script like Google Fonts so only
+         the ranges a page uses are fetched. The faces the first frame's sign textures need are preloaded. -->
+    <link rel="preload" href="/fonts/yatraone-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/yatraone-400-devanagari.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/poppins-600-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/poppins-500-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <style>
+      @font-face{font-family:'Poppins';font-weight:400;font-display:swap;src:url(/fonts/poppins-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+      @font-face{font-family:'Poppins';font-weight:400;font-display:swap;src:url(/fonts/poppins-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+      @font-face{font-family:'Poppins';font-weight:500;font-display:swap;src:url(/fonts/poppins-500-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+      @font-face{font-family:'Poppins';font-weight:500;font-display:swap;src:url(/fonts/poppins-500-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+      @font-face{font-family:'Poppins';font-weight:600;font-display:swap;src:url(/fonts/poppins-600-devanagari.woff2) format('woff2');unicode-range:U+0900-097F, U+1CD0-1CF4, U+1CF7-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B0A}
+      @font-face{font-family:'Poppins';font-weight:600;font-display:swap;src:url(/fonts/poppins-600-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+      @font-face{font-family:'Poppins';font-weight:600;font-display:swap;src:url(/fonts/poppins-600-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+      @font-face{font-family:'Poppins';font-weight:700;font-display:swap;src:url(/fonts/poppins-700-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+      @font-face{font-family:'Poppins';font-weight:700;font-display:swap;src:url(/fonts/poppins-700-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+      @font-face{font-family:'Yatra One';font-weight:400;font-display:swap;src:url(/fonts/yatraone-400-devanagari.woff2) format('woff2');unicode-range:U+0900-097F, U+1CD0-1CF4, U+1CF7-1CF9, U+200C-200D, U+20A8, U+20B9, U+20F0, U+25CC, U+A830-A839, U+A8E0-A8FF, U+11B00-11B0A}
+      @font-face{font-family:'Yatra One';font-weight:400;font-display:swap;src:url(/fonts/yatraone-400-latin-ext.woff2) format('woff2');unicode-range:U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF}
+      @font-face{font-family:'Yatra One';font-weight:400;font-display:swap;src:url(/fonts/yatraone-400-latin.woff2) format('woff2');unicode-range:U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD}
+    </style>
     <link rel="stylesheet" href="/src/style.css" />
   </head>
   <body>
@@ -55,6 +78,7 @@
             <div class="cust-section"><span>Bottoms</span><div class="swatches" data-field="bottom"></div></div>
           </div>
           <div class="cust-section"><span>Accent · pagdi, dupatta, bangles</span><div class="swatches" data-field="accent"></div></div>
+          <div class="cust-section"><span>Body</span><div class="chips" data-field="body"></div></div>
           <div class="cust-section"><span>Outfit</span><div class="chips" data-field="style"></div></div>
           <div class="cust-section"><span>Hair &amp; headwear</span><div class="chips" data-field="hairStyle"></div></div>
           <div class="cust-section"><span>Extras</span><div class="chips toggles" data-field="extras"></div></div>
@@ -64,6 +88,7 @@
             <button type="button" id="custRandom" class="ghost">🎲 Randomise</button>
             <button type="submit" id="custEnter" class="primary">Enter the Mela</button>
           </div>
+          <p class="privacy-note intro-only">We record visits and in-mela activity to improve the mela. Chat messages are stored for 30 days for safety.</p>
           <div class="controls-hint desktop-only intro-only">
             <span><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> walk</span>
             <span><kbd>Space</kbd> jump</span>
@@ -71,19 +96,18 @@
             <span>Drag to turn the camera</span>
           </div>
           <div class="controls-hint touch-only intro-only">
-            <span>Left thumb to walk</span>
-            <span>Drag to look</span>
-            <span>Tap the prompt to interact</span>
+            <span>🕹️ Joystick (bottom left) to walk</span>
+            <span>👉 Drag anywhere else to look</span>
+            <span>👆 Tap the glowing button to do things</span>
           </div>
         </div>
       </form>
     </div>
 
     <header id="hud-top">
-      <div class="brand">🪔 Topmate Diwali Mela</div>
+      <div class="brand">🪔 <span>Topmate Diwali Mela</span></div>
       <nav id="places">
         <button data-place="gate">Gate</button>
-        <button data-place="creators">Creators</button>
         <button data-place="selfie">Selfie</button>
         <button data-place="tambola">Tambola</button>
         <button data-place="ramleela">Ramleela</button>
@@ -92,11 +116,8 @@
         <button data-place="games">Games</button>
         <button data-place="train">Train</button>
         <button data-place="carousel">Carousel</button>
-        <button data-place="columbus">Columbus</button>
         <button data-place="cars">Cars</button>
         <button data-place="airfield">Airfield</button>
-        <button data-place="plaza">Rangoli</button>
-        <button data-place="kuan">Kuan</button>
         <button data-place="wheel">Giant Wheel</button>
         <button data-place="fireworks">Fireworks</button>
         <button data-place="ghat">Ghat</button>
@@ -117,11 +138,11 @@
     <div id="stampToast"></div>
 
     <div id="prompts">
-      <button id="prompt" class="prompt hidden"><kbd>E</kbd><span></span></button>
-      <button id="prompt2" class="prompt alt hidden"><kbd>Q</kbd><span></span></button>
+      <button id="prompt" class="prompt hidden"><kbd>E</kbd><i class="tap" aria-hidden="true">👆</i><span></span></button>
+      <button id="prompt2" class="prompt alt hidden"><kbd>Q</kbd><i class="tap" aria-hidden="true">👆</i><span></span></button>
     </div>
 
-    <div id="ctxHelp" class="desktop-only"></div>
+    <div id="ctxHelp"></div>
 
     <div id="actionbar">
       <button data-action="rocket" title="1"><span>🚀</span>Rocket</button>
@@ -135,8 +156,9 @@
 
     <button id="jumpBtn" class="touch-only">⤒</button>
     <div id="vehicleBtns" class="touch-only hidden">
-      <button id="vehUp">▲</button>
-      <button id="vehDown">▼</button>
+      <button id="vehHorn" class="hidden"><b>📯</b><small>Horn</small></button>
+      <button id="vehUp"><b>▲</b><small>Up</small></button>
+      <button id="vehDown"><b>▼</b><small>Down</small></button>
     </div>
 
     <div id="crosshair" class="hidden"></div>
@@ -200,6 +222,7 @@
           <button data-tab="wishes">🏮 Wishes</button>
         </div>
         <div class="board-body"></div>
+        <p class="privacy-note">We record visits and in-mela activity to improve the mela. Chat messages are stored for 30 days for safety.</p>
         <div class="row"><button class="primary small" data-close>Close</button></div>
       </div>
     </div>
@@ -208,32 +231,8 @@
       <div class="modal-card">
         <h2>⚙️ Settings</h2>
         <div class="settings-body"></div>
+        <p class="privacy-note">We record visits and in-mela activity to improve the mela. Chat messages are stored for 30 days for safety.</p>
         <div class="row"><button class="primary small" data-close>Done</button></div>
-      </div>
-    </div>
-
-    <div id="creatorCard" class="overlay hidden">
-      <div class="modal-card center creator">
-        <div class="cc-photo"><img alt="" class="hidden" /><div class="cc-initial"></div></div>
-        <h2></h2>
-        <p class="cc-handle"></p>
-        <p class="cc-headline"></p>
-        <div class="row">
-          <button class="primary small" data-book>Book a session on Topmate ↗</button>
-          <button class="ghost" data-close>Maybe later</button>
-        </div>
-      </div>
-    </div>
-
-    <div id="tambola" class="overlay light hidden">
-      <div class="modal-card tambola-card">
-        <div class="tb-head">
-          <div><div class="tb-current">–</div><div class="tb-call"></div></div>
-          <div class="tb-side"><div class="tb-count"></div><div class="tb-recent"></div></div>
-        </div>
-        <div class="ticket"></div>
-        <div class="tb-prizes"></div>
-        <div class="row"><button class="ghost" id="tambolaLeave">Leave the table <kbd>Esc</kbd></button></div>
       </div>
     </div>
 
@@ -271,7 +270,15 @@
       </div>
     </div>
 
-    <div id="joystick"><div class="knob"></div></div>
+    <div id="joystick" class="touch-only" aria-hidden="true"><div class="knob"></div><span class="joy-label">Walk</span></div>
+
+    <!-- touch: a one-time "how to play" card over the controls it describes -->
+    <div id="coach" class="hidden" role="dialog" aria-label="How to play on a phone">
+      <div class="coach-walk"><b>👈</b><span>Drag here<br />to walk</span></div>
+      <div class="coach-look"><b>👉</b><span>Drag anywhere else<br />to look around</span></div>
+      <div class="coach-tap"><b>👆</b><span>Tap the glowing button<br />to do things</span></div>
+      <div class="coach-ok">Tap anywhere to start</div>
+    </div>
 
     <script type="module" src="/src/main.js"></script>
   </body>

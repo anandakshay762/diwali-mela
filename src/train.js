@@ -1,9 +1,13 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import { Character, randomLook } from './character.js';
 import { shape, merged } from './character.js';
 import { canvasTexture, hdr, setLayer, WARM_PALETTE } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
+import { mergeStatic, mergeAdded } from './merge.js';
+import { seg } from './lod.js';
 
 /*
   The toy train: a narrow-gauge loop east of the bazaar with two stations. It runs on its own
@@ -16,8 +20,8 @@ import { signTexture } from './stalls.js';
 // behind the game booths (x ≤ 31.5).
 const RECT = { x0: 16, x1: 36, z0: 8, z1: 49, r: 6 };
 const STATIONS = [
-  { name: 'Bazaar Station', near: [16, 36], side: -1 }, // platform on the west, by the bazaar
-  { name: 'Khel Gali Station', near: [36, 27], side: 1 }, // platform on the west of the east straight, by the booths
+  { slot: 'ride.train.station1', near: [16, 36], side: -1 }, // platform on the west, by the bazaar (name: a personal slot)
+  { slot: 'ride.train.station2', near: [36, 27], side: 1 }, // platform on the west of the east straight, by the booths
 ];
 
 /** A quarter (or any) arc on the ground plane, usable inside a CurvePath. */
@@ -53,6 +57,8 @@ const CAR_GAP = 3.3;
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
 const std = (color, roughness = 0.7, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 const ZERO = new THREE.Vector3();
+const _p = new THREE.Vector3();
+const _t = new THREE.Vector3();
 
 export class Train {
   constructor(ctx, lights) {
@@ -68,6 +74,7 @@ export class Train {
     this.wantOff = false;
 
     // ---- track ----
+    const before = new Set(scene.children);
     const N = 480;
     const pts = this.curve.getSpacedPoints(N);
     pts.pop();
@@ -81,7 +88,7 @@ export class Train {
         rail.push(V(a.x - t.z * side, 0.09, a.z + t.x * side));
       }
       const rc = new THREE.CatmullRomCurve3(rail, true, 'catmullrom', 0.5);
-      const tube = new THREE.Mesh(new THREE.TubeGeometry(rc, 600, 0.045, 6, true), railMat);
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(rc, seg(600, 300), 0.045, seg(6, 4), true), railMat);
       tube.castShadow = true;
       scene.add(tube);
     }
@@ -124,7 +131,7 @@ export class Train {
       plat.receiveShadow = plat.castShadow = true;
       scene.add(plat);
       const signPos = centre.clone().add(right.clone().multiplyScalar(st.side * 1.0));
-      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.75), new THREE.MeshBasicMaterial({ map: signTexture(st.name, 'Toy train · press E when it stops', '#13306b', '#ffe7a3', 1024, 288), color: new THREE.Color(1.2, 1.2, 1.2), side: THREE.DoubleSide }));
+      const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.75), new THREE.MeshBasicMaterial({ map: signTexture(slot(st.slot), tk('Toy train · press E when it stops', 'Toy train · tap the button when it stops', 'Toy train · all aboard!'), '#13306b', '#ffe7a3', 1024, 288), color: new THREE.Color(1, 1, 1), side: THREE.DoubleSide }));
       sign.position.set(signPos.x, 2.4, signPos.z);
       sign.rotation.y = Math.atan2(t.x, t.z) + Math.PI / 2;
       scene.add(sign);
@@ -148,6 +155,8 @@ export class Train {
       });
       return station;
     });
+
+    mergeAdded(scene, before, { cell: 40 }); // rails, platforms, posts
 
     // ---- rolling stock ----
     this.cars = [this.engine(), this.carriage(0x2a9d8f), this.carriage(0xe63946)];
@@ -207,6 +216,7 @@ export class Train {
     g.add(funnel);
     g.userData.funnel = funnel;
     g.userData.seats = [];
+    mergeStatic(g); // body, wheels and lamp move together: one mesh per look
     return g;
   }
 
@@ -243,18 +253,21 @@ export class Train {
       g.add(seat);
       return seat;
     });
+    mergeStatic(g);
     return g;
   }
 
   // ---------- running ----------
 
   place() {
+    if (this.s === this.placedS) return; // standing at a station: the cars are already there
+    this.placedS = this.s;
     for (let i = 0; i < this.cars.length; i++) {
       let s = this.s - i * CAR_GAP;
       s = ((s % this.length) + this.length) % this.length;
       const u = s / this.length;
-      const p = this.curve.getPointAt(u);
-      const t = this.curve.getTangentAt(u);
+      const p = this.curve.getPointAt(u, _p);
+      const t = this.curve.getTangentAt(u, _t);
       const c = this.cars[i];
       c.position.set(p.x, 0.02, p.z);
       c.rotation.set(0, Math.atan2(t.x, t.z), 0);
@@ -296,7 +309,7 @@ export class Train {
     player.cam.pitch = 0.25;
     passport.stamp('train');
     audio.ding(0.2);
-    ui.toast(`🚂 All aboard! Press E to get off at the next station.`, 4000, { important: true });
+    ui.toast(tk('🚂 All aboard! Press E to get off at the next station.', '🚂 All aboard! Tap “Get off” to step down at the next station.'), 4000, { important: true });
     this.dwell = Math.min(this.dwell, 1.2);
   }
 
@@ -323,7 +336,7 @@ export class Train {
   }
 
   get help() {
-    return [['E', 'Get off next stop'], ['Drag', 'Look around'], ['Scroll', 'Zoom']];
+    return { key: [['E', 'Get off next stop'], ['Drag', 'Look around'], ['Scroll', 'Zoom']], tap: [['👆', 'Get off next stop'], ['👉', 'Drag to look around']] };
   }
 
   update(dt, t) {

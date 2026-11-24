@@ -1,6 +1,8 @@
+import { tk } from '../touch.js';
 import * as THREE from 'three';
 import { canvasTexture, beam, WARM_PALETTE } from '../utils.js';
 import { signTexture } from '../stalls.js';
+import { slot } from '../personalSlots.js';
 import { SITES } from '../world.js';
 
 const std = (color, roughness = 0.7, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
@@ -9,7 +11,7 @@ const V = (x, y, z) => new THREE.Vector3(x, y, z);
 function sign(scene, title, sub, bg, x, y, z, ry, w = 4.2) {
   const wide = sub && sub.length > 34;
   const tex = signTexture(title, sub, bg, '#ffe7a3', wide ? 1024 : 512, wide ? 288 : 144);
-  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.28), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.2, 1.2, 1.2), side: THREE.DoubleSide }));
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, w * 0.28), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1, 1, 1), side: THREE.DoubleSide }));
   m.position.set(x, y, z);
   m.rotation.y = ry;
   scene.add(m);
@@ -26,35 +28,57 @@ function warm(scene, x, y, z, i = 60, d = 24) {
 export function buildAirfield(ctx, lights) {
   const { scene, world } = ctx;
   const a = SITES.airfield;
+  // The runway is 128 m long (it was 64 m: too short to land on). It runs along z from the
+  // fireworks-field end (z -40, short of the river quay at -44) to past the gate's latitude
+  // (z 88), clear of the fireworks fence (x <= 44) and the Tambola tent to the west and of the
+  // hangar and helipad to the east. The plane still parks at z 2, by the hangar.
   const RUN_W = 10;
-  const RUN_L = 64;
+  const RUN_L = 128;
+  const RUN_Z = 24; // centre along z
+  const z0 = RUN_Z - RUN_L / 2;
+  const z1 = RUN_Z + RUN_L / 2;
 
-  const asphalt = canvasTexture(256, 1024, (c, w, h) => {
+  // 16 px per metre along the strip (same density as before), markings painted in: edge lines,
+  // centreline dashes, threshold piano keys, and at each end a touchdown zone (paired bars) and
+  // an aiming point (two fat blocks) so there is something to aim at on approach
+  const PX = 16;
+  const asphalt = canvasTexture(256, RUN_L * PX, (c, w, h) => {
     c.fillStyle = '#3a3a40';
     c.fillRect(0, 0, w, h);
-    for (let i = 0; i < 6000; i++) {
+    for (let i = 0; i < 12000; i++) {
       c.fillStyle = `rgba(${Math.random() > 0.5 ? '120,120,130' : '15,15,20'},${Math.random() * 0.25})`;
       c.fillRect(Math.random() * w, Math.random() * h, 2, 2);
     }
     c.fillStyle = '#f1e9c8';
-    for (let y = 40; y < h - 40; y += 96) c.fillRect(w / 2 - 5, y, 10, 48);
+    for (let y = 9 * PX; y < h - 9 * PX; y += 96) c.fillRect(w / 2 - 5, y, 10, 48);
     for (const y of [8, h - 40]) for (let x = 20; x < w - 20; x += 36) c.fillRect(x, y, 18, 32);
+    for (const end of [0, 1]) {
+      const at = (m) => (end ? h - m * PX : m * PX); // metres in from this end
+      // aiming point 18 m in, touchdown bars at 9, 27 and 36 m
+      for (const s of [-1, 1]) c.fillRect(w / 2 + s * 34 - (s < 0 ? 40 : 0), at(18) - 40, 40, 80);
+      for (const [m, n] of [[9, 3], [27, 2], [36, 1]]) {
+        for (const s of [-1, 1]) for (let k = 0; k < n; k++) c.fillRect(w / 2 + s * (78 + k * 18) - (s < 0 ? 10 : 0), at(m) - 24, 10, 48);
+      }
+    }
     c.fillStyle = '#ffd166';
     c.fillRect(0, 0, 6, h);
     c.fillRect(w - 6, 0, 6, h);
   });
   const runway = new THREE.Mesh(new THREE.PlaneGeometry(RUN_W, RUN_L), std(0xffffff, 0.95, { map: asphalt, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
   runway.rotation.x = -Math.PI / 2;
-  runway.position.set(a.x, 0.03, a.z);
+  runway.position.set(a.x, 0.03, RUN_Z);
   scene.add(runway);
 
   for (const s of [-1, 1]) {
     const pts = [];
-    for (let z = a.z - RUN_L / 2; z <= a.z + RUN_L / 2; z += 4) pts.push(V(a.x + s * (RUN_W / 2 + 0.6), 0.35, z));
+    for (let z = z0; z <= z1; z += 4) pts.push(V(a.x + s * (RUN_W / 2 + 0.6), 0.35, z));
     lights.addPolyline(pts, { spacing: 4, palette: [0xffffff, 0xffffff, 0x3a86ff], mode: 'chase' });
   }
-  lights.addPolyline([V(a.x - RUN_W / 2, 0.35, a.z - RUN_L / 2 - 1), V(a.x + RUN_W / 2, 0.35, a.z - RUN_L / 2 - 1)], { spacing: 1, palette: [0x20ff40], mode: 'twinkle' });
-  lights.addPolyline([V(a.x - RUN_W / 2, 0.35, a.z + RUN_L / 2 + 1), V(a.x + RUN_W / 2, 0.35, a.z + RUN_L / 2 + 1)], { spacing: 1, palette: [0xff3030], mode: 'twinkle' });
+  lights.addPolyline([V(a.x - RUN_W / 2, 0.35, z0 - 1), V(a.x + RUN_W / 2, 0.35, z0 - 1)], { spacing: 1, palette: [0x20ff40], mode: 'twinkle' });
+  lights.addPolyline([V(a.x - RUN_W / 2, 0.35, z1 + 1), V(a.x + RUN_W / 2, 0.35, z1 + 1)], { spacing: 1, palette: [0xff3030], mode: 'twinkle' });
+  // approach lights: a chasing line out from the south threshold (the north end stops at the
+  // quay), so the runway's line is easy to pick up from the air over the gate
+  lights.addPolyline([V(a.x, 0.35, z1 + 20), V(a.x, 0.35, z1 + 3)], { spacing: 1.5, palette: [0xffffff, 0xffd166], mode: 'chase' });
 
   // helipad
   const pad = canvasTexture(512, 512, (c, w) => {
@@ -108,7 +132,7 @@ export function buildAirfield(ctx, lights) {
   scene.add(floor);
   world.colliders.push({ type: 'box', minX: hx - 5.5, maxX: hx + 5.5, minZ: hz - 5.2, maxZ: hz + 5.2 });
   world.tall.push({ type: 'box', minX: hx - 5.5, maxX: hx + 5.5, minZ: hz - 5.2, maxZ: hz + 5.2, h: 7 });
-  sign(scene, 'Pushpak Viman Airfield', 'Walk up to a plane or heli and press E to fly', '#13306b', hx - 5.9, 5.2, hz, -Math.PI / 2, 6);
+  sign(scene, slot('ride.airfield.sign'), tk('Walk up to a plane or heli and press E to fly', 'Walk up to a plane or heli and tap the button to fly', 'Planes and helis · take to the sky'), '#13306b', hx - 5.9, 5.2, hz, -Math.PI / 2, 6);
   warm(scene, hx - 3, 4.5, hz, 60, 20);
   warm(scene, a.x, 6, a.z - 20, 90, 26); // over the plane's parking spot
   warm(scene, a.x + 12, 9, a.z + 16, 26, 24); // over the helipad
@@ -249,7 +273,7 @@ export function buildCarGround(ctx, lights) {
   banner.position.set(S.x, 5.2, S.z);
   banner.rotation.y = dir;
   scene.add(banner);
-  sign(scene, 'Chakri Cars', 'Go-kart circuit · W A S D drive · Space drift · beat your best lap', '#5c0a10', S.x, 4.3, S.z, dir + Math.PI, 6.4);
+  sign(scene, slot('ride.cars.sign'), tk('Go-kart circuit · W A S D drive · Space drift · beat your best lap', 'Go-kart circuit · joystick to drive · ✋ to drift · beat your best lap'), '#5c0a10', S.x, 4.3, S.z, dir + Math.PI, 6.4);
   lights.addStrand(V(gL.x, 5.2, gL.z), V(gR.x, 5.2, gR.z), { sag: 0.5, mode: 'chase' });
   const flagTex = canvasTexture(128, 96, (f, w, h) => {
     for (let i = 0; i < 8; i++) for (let j = 0; j < 6; j++) {
@@ -352,7 +376,7 @@ export function buildCarGround(ctx, lights) {
   lights.addStrand(V(cx - 3.5, 3.4, cz - 4.5), V(cx - 3.5, 3.4, cz + 4.5), { sag: 0.4, palette: WARM_PALETTE });
   lights.addStrand(V(cx + 3.5, 3.4, cz - 4.5), V(cx + 3.5, 3.4, cz + 4.5), { sag: 0.4, palette: WARM_PALETTE });
   warm(scene, cx, 3, cz, 60, 18);
-  sign(scene, 'Pit Lane', 'Press E at a car', '#13306b', cx - 3.9, 2.6, cz, Math.PI / 2, 3);
+  sign(scene, 'Pit Lane', tk('Press E at a car', 'Walk to a car and tap the button'), '#13306b', cx - 3.9, 2.6, cz, Math.PI / 2, 3);
 
   return {
     spawns: [

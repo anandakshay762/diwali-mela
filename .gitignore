@@ -1,9 +1,17 @@
 node_modules/
 dist/
 server/data.json
+server/rooms/
 .env
 .env.*
 .DS_Store
 Thumbs.db
 *.log
 .vite/
+bench/shots-*/
+.claude/
+
+# local test portrait for tools/creator-check.mjs (not shipped)
+public/test-photo.png
+# local test reels / posts for the Mela Screen (tools/billboard-check.mjs, director-check --billboard)
+public/test-billboard/

@@ -1,7 +1,11 @@
 import * as THREE from 'three';
-import { Character, LOOK_OPTIONS, randomPlayerLook } from './character.js';
+import { Character, LOOK_OPTIONS, randomPlayerLook, resolveLook } from './character.js';
+
+const HER_STYLES = new Set(['saree', 'lehenga', 'salwar', 'long']);
 import { profile, normalizeHandle } from './profile.js';
 import { pick } from './utils.js';
+import { settings } from './settings.js';
+import { track } from './track.js';
 
 const hex = (n) => `#${n.toString(16).padStart(6, '0')}`;
 const $ = (s) => document.querySelector(s);
@@ -45,8 +49,9 @@ export class Customizer {
 
   setupPreview() {
     this.canvas = $('#custPreview');
-    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: true });
-    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    // a second WebGL context next to the mela: a small canvas, so 1.5x is plenty; phones skip MSAA
+    this.renderer = new THREE.WebGLRenderer({ canvas: this.canvas, alpha: true, antialias: settings.tier !== 'low' });
+    this.renderer.setPixelRatio(Math.min(devicePixelRatio, 1.5));
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.1;
     this.scene = new THREE.Scene();
@@ -83,7 +88,9 @@ export class Customizer {
     const end = () => (this.dragging = null);
     this.canvas.addEventListener('pointerup', end);
     this.canvas.addEventListener('pointercancel', end);
-    addEventListener('resize', () => this.fit());
+    // the stage's size follows the layout (portrait, landscape, phone toolbars), not just the window
+    if (window.ResizeObserver) new ResizeObserver(() => this.fit()).observe(this.canvas);
+    else addEventListener('resize', () => this.fit());
   }
 
   fit() {
@@ -157,6 +164,7 @@ export class Customizer {
         else this.apply({ [field]: v });
       });
     };
+    chips('body', LOOK_OPTIONS.body);
     chips('style', LOOK_OPTIONS.style);
     chips('hairStyle', LOOK_OPTIONS.hairStyle);
     chips('extras', LOOK_OPTIONS.extras);
@@ -166,12 +174,27 @@ export class Customizer {
   toggleExtra(id) {
     const L = this.look;
     if (id === 'dupatta' || id === 'bangles') this.apply({ [id]: L[id] ? null : L.accent });
+    // a beard goes off -> dark -> grey -> off
+    else if (id === 'beard') this.apply({ beard: !L.beard ? 'dark' : L.beard === 'grey' ? false : 'grey' });
     else this.apply({ [id]: !L[id] });
   }
 
   apply(partial) {
     const L = this.look;
+    this.changes = (this.changes ?? 0) + 1;
+    for (const k in partial) (this.fields ??= new Set()).add(k);
+    const was = resolveLook(L).fem ? 'f' : 'm';
     Object.assign(L, partial);
+    // the outfit decides the build (a saree, lehenga, salwar or anarkali is hers, a sherwani his;
+    // a kurta or casual keeps the build there was); Him / Her is the explicit override, and swaps
+    // an outfit that body does not wear
+    if ('style' in partial) L.body = HER_STYLES.has(L.style) ? 'f' : L.style === 'sherwani' ? 'm' : was;
+    else if ('hairStyle' in partial && !L.body) L.body = was;
+    if ('body' in partial) {
+      if (L.body === 'm' && HER_STYLES.has(L.style)) L.style = 'kurta';
+      if (L.body === 'f' && L.style === 'sherwani') L.style = 'salwar';
+      if (L.body === 'f') L.moustache = L.beard = false;
+    }
     if ('accent' in partial) {
       L.turban = L.accent;
       if (L.dupatta) L.dupatta = L.accent;
@@ -192,7 +215,9 @@ export class Customizer {
       const f = box.dataset.field;
       box.querySelectorAll('.chip').forEach((b) => {
         const v = b.dataset.v;
-        b.classList.toggle('on', f === 'extras' ? !!L[v] : L[f] === v);
+        const cur = f === 'body' ? (resolveLook(L).fem ? 'f' : 'm') : f === 'style' ? resolveLook(L).style : L[f];
+        b.classList.toggle('on', f === 'extras' ? !!L[v] : cur === v);
+        if (f === 'extras' && v === 'beard') b.lastChild.textContent = L.beard === 'grey' ? 'Grey beard' : 'Beard';
       });
     });
   }
@@ -233,6 +258,8 @@ export class Customizer {
   }
 
   submit() {
+    // the Enter button's click and the form's submit both land here: only the first one counts
+    if (this.el.classList.contains('hidden')) return;
     const name = this.nameEl.value.trim().replace(/\s+/g, ' ');
     if (name.length < 2) {
       this.errorEl.textContent = 'Please tell us your name so other visitors know who you are';
@@ -249,6 +276,10 @@ export class Customizer {
     profile.save();
     if (profile.handle) profile.fetchTopmate();
     const mode = this.mode;
+    const r = resolveLook(this.look);
+    track('customize', { action: 'done', mode, changes: this.changes ?? 0, fields: [...(this.fields ?? [])], style: r.style, body: r.fem ? 'f' : 'm', name: profile.name, handle: profile.handle, topmate: !!profile.topmate?.found });
+    this.changes = 0;
+    this.fields = null;
     this.close();
     if (mode === 'intro') this.cb.onEnter?.();
     else this.cb.onDone?.();

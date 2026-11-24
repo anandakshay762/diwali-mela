@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { STAMPS } from './passport.js';
 import { settings, keyLabel, KEY_LABELS, DEFAULT_KEYS } from './settings.js';
+import { TOUCH, tk } from './touch.js';
+import { track } from './track.js';
 
 const $ = (s) => document.querySelector(s);
 const _v = new THREE.Vector3();
@@ -14,7 +16,9 @@ const rank = (p) => RANKS.find(([max]) => p < max)[1];
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
 
 export function createUI(h) {
-  if (matchMedia('(pointer: coarse)').matches) document.body.classList.add('touch');
+  if (TOUCH) document.body.classList.add('touch');
+  // the header icons' tooltips name their shortcut keys; a phone has none
+  if (TOUCH) document.querySelectorAll('#hud-top button[title]').forEach((b) => (b.title = b.title.replace(/ \([A-Z]\)$/, '')));
 
   const intro = $('#intro');
   const toastEl = $('#toast');
@@ -50,6 +54,7 @@ export function createUI(h) {
   const iconBtn = (sel, fn) =>
     $(sel).addEventListener('click', (e) => {
       e.currentTarget.blur();
+      track('activity', { what: 'hud', button: sel.slice(1, -3) });
       fn();
     });
   iconBtn('#muteBtn', () => h.onMute());
@@ -58,7 +63,30 @@ export function createUI(h) {
   iconBtn('#avatarBtn', () => h.onAvatar());
   iconBtn('#boardsBtn', () => api.openBoards());
   iconBtn('#settingsBtn', () => api.openSettings());
-  iconBtn('#micBtn', () => h.onMic());
+  // push-to-talk on a phone: hold the 🎤 button to talk; a quick tap still switches the mic on or off
+  let micDownAt = 0;
+  let micHeldLong = false;
+  if (TOUCH) {
+    const mic = $('#micBtn');
+    const up = () => {
+      if (!micDownAt) return;
+      micHeldLong = performance.now() - micDownAt > 350;
+      micDownAt = 0;
+      api.micHeld = false;
+    };
+    mic.addEventListener('pointerdown', () => {
+      micDownAt = performance.now();
+      micHeldLong = false;
+      api.micHeld = true;
+    });
+    mic.addEventListener('pointerup', up);
+    mic.addEventListener('pointercancel', up);
+    mic.addEventListener('pointerleave', up);
+  }
+  iconBtn('#micBtn', () => {
+    if (TOUCH && micHeldLong && settings.voice === 'ptt') return; // that was a hold to talk, not a tap
+    h.onMic();
+  });
   $('#prompt').addEventListener('click', () => h.onPromptTap(settings.keys.interact));
   $('#prompt2').addEventListener('click', () => h.onPromptTap(settings.keys.use));
   $('#jumpBtn').addEventListener('click', () => h.onPromptTap(settings.keys.jump));
@@ -66,6 +94,26 @@ export function createUI(h) {
   const vehBtns = $('#vehicleBtns');
   h.input.bindHold($('#vehUp'), 'jump');
   h.input.bindHold($('#vehDown'), 'run');
+  h.input.bindHold($('#vehHorn'), 'horn');
+
+  // ---------- touch: first-run coach card ----------
+
+  const coachEl = $('#coach');
+  let coachDone = null;
+  const hideCoach = (e) => {
+    e?.preventDefault();
+    coachEl.classList.add('hidden');
+    document.body.classList.remove('coaching');
+    const done = coachDone;
+    coachDone = null;
+    done?.();
+    try {
+      localStorage.setItem('melaCoach', '1');
+    } catch {
+      // ignore
+    }
+  };
+  coachEl.addEventListener('pointerdown', hideCoach);
 
   // ---------- wish modal ----------
 
@@ -105,7 +153,7 @@ export function createUI(h) {
     resultResolve = null;
   };
 
-  // ---------- passport, boards, settings, creator ----------
+  // ---------- passport, boards, settings ----------
 
   const passportEl = $('#passport');
   passportEl.querySelector('[data-close]').addEventListener('click', () => closeModal(passportEl));
@@ -120,22 +168,8 @@ export function createUI(h) {
   });
   const settingsEl = $('#settingsPanel');
   settingsEl.querySelector('[data-close]').addEventListener('click', () => closeModal(settingsEl));
-  const creatorEl = $('#creatorCard');
-  let creatorResolve = null;
-  const closeCreator = (v) => {
-    closeModal(creatorEl);
-    creatorResolve?.(v);
-    creatorResolve = null;
-  };
-  creatorEl.querySelector('[data-book]').addEventListener('click', () => closeCreator('book'));
-  creatorEl.querySelector('[data-close]').addEventListener('click', () => closeCreator('close'));
-
-  // ---------- tambola ----------
-
-  const tambolaEl = $('#tambola');
-  let tambolaLeave = null;
-  $('#tambolaLeave').addEventListener('click', () => tambolaLeave?.());
-
+  // a tap on the dimmed backdrop (outside the card) closes these too
+  for (const el of [passportEl, boardsEl, settingsEl]) el.addEventListener('click', (e) => e.target === el && closeModal(el));
   addEventListener('keydown', (e) => {
     if (e.target instanceof HTMLInputElement || e.target instanceof HTMLSelectElement) {
       if (e.code === 'Escape') closeWish(null);
@@ -157,14 +191,6 @@ export function createUI(h) {
         if (e.code === 'Escape' || (el === passportEl && e.code === settings.keys.passport) || (el === boardsEl && e.code === settings.keys.board)) closeModal(el);
         return;
       }
-    }
-    if (!creatorEl.classList.contains('hidden')) {
-      if (e.code === 'Escape') closeCreator('close');
-      return;
-    }
-    if (!tambolaEl.classList.contains('hidden')) {
-      if (e.code === 'Escape') tambolaLeave?.();
-      return;
     }
     if (!intro.classList.contains('hidden') || e.repeat || modals || h.input.capture) return;
     const k = settings.keys;
@@ -188,6 +214,42 @@ export function createUI(h) {
 
   const hud = $('#gameHud');
   const crosshair = $('#crosshair');
+  // HUD parts are looked up once; per-frame setters write the DOM only when a value changes, and
+  // the bars move by transform (no layout) rather than width
+  const hudEl = {
+    title: hud.querySelector('.gh-title'),
+    help: hud.querySelector('.gh-help'),
+    stats: hud.querySelector('.gh-stats'),
+    bar: hud.querySelector('.gh-bar'),
+    timer: hud.querySelector('.gh-timer'),
+  };
+  hudEl.barFill = hudEl.bar.querySelector('.fill');
+  hudEl.barLabel = hudEl.bar.querySelector('.label');
+  hudEl.zone = hudEl.bar.querySelector('.zone');
+  hudEl.timerFill = hudEl.timer.querySelector('.fill');
+  for (const f of [hudEl.barFill, hudEl.timerFill]) {
+    f.style.width = '100%';
+    f.style.transformOrigin = '0 50%';
+    f.style.transform = 'scaleX(0)';
+  }
+  const hudLast = { stats: null, bar: undefined, barScale: -1, hot: null, label: null, zone: undefined, timer: undefined, timerScale: -1 };
+  const prompts = {};
+  const promptRef = (id) =>
+    (prompts[id] ??= (() => {
+      const el = $(id);
+      return { el, span: el.querySelector('span'), kbd: el.querySelector('kbd'), text: undefined, key: undefined };
+    })());
+  const writePrompt = (id, text, code) => {
+    const p = promptRef(id);
+    if (text === p.text && (!text || code === p.key)) return;
+    if (!text !== !p.text) p.el.classList.toggle('hidden', !text);
+    p.text = text;
+    if (text) {
+      p.span.textContent = text;
+      p.kbd.textContent = keyLabel(code);
+      p.key = code;
+    }
+  };
 
   const renderBoards = () => {
     const boards = h.boards?.() ?? {};
@@ -241,29 +303,50 @@ export function createUI(h) {
     },
 
     setPrompt(text) {
-      const el = $('#prompt');
-      el.classList.toggle('hidden', !text);
-      if (text) {
-        el.querySelector('span').textContent = text;
-        el.querySelector('kbd').textContent = keyLabel(settings.keys.interact);
-      }
+      writePrompt('#prompt', text, settings.keys.interact);
     },
 
     setPrompt2(text) {
-      const el = $('#prompt2');
-      el.classList.toggle('hidden', !text);
-      if (text) {
-        el.querySelector('span').textContent = text;
-        el.querySelector('kbd').textContent = keyLabel(settings.keys.use);
-      }
+      writePrompt('#prompt2', text, settings.keys.use);
     },
 
-    /** lines: [[keysOrActions, label]]; action names are shown as their bound keys. */
+    /**
+     * lines: [[keysOrActions, label]]; action names are shown as their bound keys. A `{ key, tap }`
+     * pair picks the touch lines on a phone, where the first item is an icon rather than keys.
+     */
     setHelp(lines) {
-      $('#ctxHelp').innerHTML = lines
-        .map(([k, label]) => `<div>${k.split(' ').map((x) => `<kbd>${x in settings.keys ? keyLabel(settings.keys[x]) : x}</kbd>`).join('')}<span>${label}</span></div>`)
-        .join('');
+      if (!Array.isArray(lines)) lines = TOUCH ? lines.tap : lines.key;
+      const el = $('#ctxHelp');
+      el.innerHTML = TOUCH
+        ? lines.map(([icon, label]) => `<div><i>${icon}</i><span>${label}</span></div>`).join('')
+        : lines
+            .map(([k, label]) => `<div>${k.split(' ').map((x) => `<kbd>${x in settings.keys ? keyLabel(settings.keys[x]) : x}</kbd>`).join('')}<span>${label}</span></div>`)
+            .join('');
+      el.classList.toggle('empty', !lines.length);
     },
+
+    /**
+     * Touch: the first time someone plays on a phone, a card shows where the controls are. Returns
+     * true when it is showing; `onDone` then runs once it is tapped away (toasts wait behind it).
+     */
+    showCoach(onDone) {
+      if (!TOUCH) return false;
+      try {
+        if (localStorage.getItem('melaCoach')) return false;
+      } catch {
+        // no storage: show it anyway, it goes away on a tap
+      }
+      coachEl.classList.remove('hidden');
+      document.body.classList.add('coaching');
+      coachDone = onDone || null;
+      return true;
+    },
+
+    get coachOpen() {
+      return !coachEl.classList.contains('hidden');
+    },
+
+    micHeld: false,
 
     setMuted(m) {
       $('#muteBtn').textContent = m ? '🔇' : '🔊';
@@ -271,14 +354,17 @@ export function createUI(h) {
 
     setMusic(on) {
       $('#musicBtn').classList.toggle('off', !on);
-      $('#musicBtn').title = on ? 'Music on (B)' : 'Music off (B)';
+      $('#musicBtn').title = tk(on ? 'Music on (B)' : 'Music off (B)', on ? 'Music on' : 'Music off');
     },
 
     setMic(live, talking) {
       const b = $('#micBtn');
       b.classList.toggle('live', live);
       b.classList.toggle('talking', live && talking);
-      b.title = live ? `Mic on · ${keyLabel(settings.keys.talk)} to switch off` : `Voice chat · ${keyLabel(settings.keys.talk)} to switch on`;
+      const k = keyLabel(settings.keys.talk);
+      b.title = live
+        ? tk(`Mic on · ${k} to switch off`, settings.voice === 'ptt' ? 'Mic on · hold to talk, tap to switch off' : 'Mic on · tap to switch off')
+        : tk(`Voice chat · ${k} to switch on`, 'Voice chat · tap to switch on');
     },
 
     /** Small status chips under the header: online count, Ravan countdown, buffs. */
@@ -297,13 +383,17 @@ export function createUI(h) {
       if (el.textContent !== text) el.textContent = text;
     },
 
+    /** Touch buttons for whatever you're driving or flying (the stick steers); null hides them. */
     setVehicleButtons(kind) {
       vehBtns.classList.toggle('hidden', !kind);
+      document.body.classList.toggle('veh-ui', !!kind);
       $('#jumpBtn').classList.toggle('veh-hidden', !!kind);
-      const labels = { car: ['✋', ''], heli: ['▲', '▼'], plane: ['▲', '▼'] }[kind] ?? ['▲', '▼'];
-      $('#vehUp').textContent = labels[0];
-      $('#vehDown').classList.toggle('hidden', !labels[1]);
-      $('#vehDown').textContent = labels[1];
+      // [up icon, up label, down icon, down label]
+      const labels = { car: ['✋', 'Drift', '', ''], heli: ['▲', 'Up', '▼', 'Down'], plane: ['▲', 'Pull up', '▼', 'Dive'] }[kind] ?? ['▲', 'Up', '▼', 'Down'];
+      $('#vehUp').innerHTML = `<b>${labels[0]}</b><small>${labels[1]}</small>`;
+      $('#vehDown').classList.toggle('hidden', !labels[2]);
+      $('#vehDown').innerHTML = `<b>${labels[2]}</b><small>${labels[3]}</small>`;
+      $('#vehHorn').classList.toggle('hidden', kind !== 'car');
     },
 
     askWish() {
@@ -320,7 +410,7 @@ export function createUI(h) {
       box.innerHTML = '';
       options.forEach((o, i) => {
         const b = document.createElement('button');
-        b.innerHTML = `<span class="o-icon">${o.icon}</span><span class="o-label">${o.label}</span>${o.sub ? `<span class="o-sub">${o.sub}</span>` : ''}<kbd>${i + 1}</kbd>`;
+        b.innerHTML = `<span class="o-icon">${esc(o.icon)}</span><span class="o-label">${esc(o.label)}</span>${o.sub ? `<span class="o-sub">${esc(o.sub)}</span>` : ''}<kbd>${i + 1}</kbd>`; // labels can be a creator's text
         b.addEventListener('click', () => closeMenu(i));
         box.appendChild(b);
       });
@@ -357,31 +447,15 @@ export function createUI(h) {
     openBoards() {
       renderBoards();
       const n = h.online?.() ?? 1;
-      boardsEl.querySelector('.online').textContent = n > 1 ? `👥 ${n} at the mela right now` : 'Scores and wishes are shared with everyone when the mela server is running.';
+      const room = h.roomLabel?.() ?? '';
+      boardsEl.querySelector('.online').textContent = room
+        ? `👥 ${room} · ${n > 1 ? `${n} here right now` : 'just you right now'}. Scores and wishes are shared with this mela's visitors.`
+        : 'Scores and wishes stay on this device. Open a creator’s mela link to meet their other visitors.';
       openModal(boardsEl);
     },
 
     refreshBoards() {
       if (!boardsEl.classList.contains('hidden')) renderBoards();
-    },
-
-    creatorCard({ name, handle, headline, image }) {
-      creatorEl.querySelector('h2').textContent = name;
-      creatorEl.querySelector('.cc-handle').textContent = `topmate.io/${handle}`;
-      creatorEl.querySelector('.cc-headline').textContent = headline || '';
-      const img = creatorEl.querySelector('img');
-      const ph = creatorEl.querySelector('.cc-initial');
-      if (image) {
-        img.src = image;
-        img.classList.remove('hidden');
-        ph.classList.add('hidden');
-      } else {
-        img.classList.add('hidden');
-        ph.textContent = (name || '?').charAt(0).toUpperCase();
-        ph.classList.remove('hidden');
-      }
-      openModal(creatorEl);
-      return new Promise((r) => (creatorResolve = r));
     },
 
     openSettings() {
@@ -392,13 +466,14 @@ export function createUI(h) {
       box.innerHTML = `
         <label class="srow"><span>Graphics</span>
           <select data-set="quality"><option value="auto">Auto (${settings.detected})</option><option value="high">High · shadows & reflections</option><option value="low">Low · phones</option></select></label>
-        <label class="srow"><span>Music</span>
+        <label class="srow"><span>Soundtrack</span>
           <select data-set="music"><option value="song">Diwali song</option><option value="band">Mela band (royalty-free)</option></select></label>
+        <label class="srow"><span>Music</span><input type="range" min="0" max="1" step="0.05" data-set="musicVolume" aria-label="Music volume" /></label>
+        <label class="srow"><span>Voices</span><input type="range" min="0" max="1" step="0.05" data-set="voiceVolume" aria-label="Voices volume (people speaking)" /></label>
         <label class="srow check"><input type="checkbox" data-set="reduceMotion" /><span>Reduce motion (gentler camera and rides)</span></label>
         <label class="srow"><span>Voice chat</span>
-          <select data-set="voice"><option value="open">Open mic (voice activated)</option><option value="ptt">Push to talk (hold the Talk key)</option></select></label>
-        <label class="srow"><span>Voice volume</span><input type="range" min="0" max="1" step="0.05" data-set="voiceVolume" /></label>
-        <div class="keys"><div class="keys-title">Key bindings <button type="button" class="ghost tiny" data-resetkeys>Reset</button></div>${keysHtml}
+          <select data-set="voice"><option value="open">Open mic (voice activated)</option><option value="ptt">${tk('Push to talk (hold the Talk key)', 'Push to talk (hold the 🎤 button)')}</option></select></label>
+        <div class="keys desktop-only"><div class="keys-title">Key bindings <button type="button" class="ghost tiny" data-resetkeys>Reset</button></div>${keysHtml}
           <p class="muted small">Movement is W A S D or the arrow keys. Click a key to change it, then press the new key.</p></div>
         <p class="srow-note muted small" data-note></p>`;
       box.querySelector('[data-set="quality"]').value = settings.quality;
@@ -406,6 +481,7 @@ export function createUI(h) {
       box.querySelector('[data-set="reduceMotion"]').checked = settings.reduceMotion;
       box.querySelector('[data-set="voice"]').value = settings.voice;
       box.querySelector('[data-set="voiceVolume"]').value = settings.voiceVolume;
+      box.querySelector('[data-set="musicVolume"]').value = settings.musicVolume;
       box.querySelectorAll('[data-set]').forEach((el) =>
         el.addEventListener(el.type === 'range' ? 'input' : 'change', () => {
           const key = el.dataset.set;
@@ -433,44 +509,6 @@ export function createUI(h) {
         api.openSettings();
       });
       openModal(settingsEl);
-    },
-
-    tambola: {
-      open({ ticket, onLeave }) {
-        tambolaLeave = onLeave;
-        const grid = tambolaEl.querySelector('.ticket');
-        grid.innerHTML = ticket.map((row) => row.map((v) => `<div class="cell ${v === null ? 'blank' : ''}" data-n="${v ?? ''}">${v ?? ''}</div>`).join('')).join('');
-        tambolaEl.querySelector('.tb-current').textContent = '–';
-        tambolaEl.querySelector('.tb-call').textContent = 'Eyes down…';
-        tambolaEl.querySelector('.tb-count').textContent = '';
-        tambolaEl.querySelector('.tb-prizes').innerHTML = ['Early Five', 'Top Line', 'Middle Line', 'Bottom Line', 'Full House'].map((p) => `<span class="prize" data-prize="${p}">${p}</span>`).join('');
-        tambolaEl.querySelector('.tb-recent').innerHTML = '';
-        openModal(tambolaEl);
-        return {
-          called(n, call, count) {
-            tambolaEl.querySelector('.tb-current').textContent = n;
-            tambolaEl.querySelector('.tb-call').textContent = call || '';
-            tambolaEl.querySelector('.tb-count').textContent = `${count} of 90 called`;
-            const cell = grid.querySelector(`[data-n="${n}"]`);
-            if (cell) cell.classList.add('marked');
-            const recent = tambolaEl.querySelector('.tb-recent');
-            const chip = document.createElement('span');
-            chip.textContent = n;
-            recent.prepend(chip);
-            while (recent.children.length > 8) recent.lastChild.remove();
-          },
-          prize(prize, who) {
-            const el = tambolaEl.querySelector(`[data-prize="${prize.name}"]`);
-            if (!el) return;
-            el.classList.add(who === 'you' ? 'mine' : 'gone');
-            el.textContent = `${prize.icon} ${prize.name} · ${who === 'you' ? 'you!' : who}`;
-          },
-        };
-      },
-      close() {
-        tambolaLeave = null;
-        closeModal(tambolaEl);
-      },
     },
 
     bubble(getPos, text, seconds = 2.5) {
@@ -503,37 +541,51 @@ export function createUI(h) {
     gameHud: {
       show({ title, help, exit = true }) {
         hud.classList.remove('hidden');
-        hud.querySelector('.gh-title').textContent = title;
-        hud.querySelector('.gh-help').textContent = help;
-        hud.querySelector('.gh-stats').innerHTML = '';
+        hudEl.title.textContent = title;
+        hudEl.help.textContent = help;
+        api.gameHud.stats('');
         $('#gameExit').classList.toggle('hidden', !exit);
+        // a booth game (one you can leave): phones clear the nav and the fireworks bar out of its way
+        document.body.classList.toggle('in-booth', exit);
         api.gameHud.bar(null);
         api.gameHud.timer(null);
       },
       stats(html) {
-        hud.querySelector('.gh-stats').innerHTML = html;
+        if (html === hudLast.stats) return;
+        hudLast.stats = html;
+        hudEl.stats.innerHTML = html;
       },
       bar(value, { label = '', zone = null, hot = false } = {}) {
-        const el = hud.querySelector('.gh-bar');
-        el.classList.toggle('hidden', value === null);
+        const el = hudEl.bar;
+        if ((value === null) !== (hudLast.bar === null)) el.classList.toggle('hidden', value === null);
+        hudLast.bar = value;
         if (value === null) return;
-        el.classList.toggle('hot', hot);
-        el.querySelector('.fill').style.width = `${Math.round(value * 100)}%`;
-        el.querySelector('.label').textContent = label;
-        const z = el.querySelector('.zone');
-        z.style.display = zone ? '' : 'none';
-        if (zone) {
-          z.style.left = `${zone[0] * 100}%`;
-          z.style.width = `${(zone[1] - zone[0]) * 100}%`;
+        if (hot !== hudLast.hot) el.classList.toggle('hot', (hudLast.hot = hot));
+        const sc = Math.round(value * 100) / 100;
+        if (sc !== hudLast.barScale) hudEl.barFill.style.transform = `scaleX(${(hudLast.barScale = sc)})`;
+        if (label !== hudLast.label) hudEl.barLabel.textContent = hudLast.label = label;
+        const zk = zone ? `${zone[0]},${zone[1]}` : '';
+        if (zk !== hudLast.zone) {
+          hudLast.zone = zk;
+          const z = hudEl.zone;
+          z.style.display = zone ? '' : 'none';
+          if (zone) {
+            z.style.left = `${zone[0] * 100}%`;
+            z.style.width = `${(zone[1] - zone[0]) * 100}%`;
+          }
         }
       },
       timer(value) {
-        const el = hud.querySelector('.gh-timer');
-        el.classList.toggle('hidden', value === null);
-        if (value !== null) el.querySelector('.fill').style.width = `${Math.max(0, value) * 100}%`;
+        const el = hudEl.timer;
+        if ((value === null) !== (hudLast.timer === null)) el.classList.toggle('hidden', value === null);
+        hudLast.timer = value;
+        if (value === null) return;
+        const sc = Math.round(Math.max(0, value) * 1000) / 1000;
+        if (sc !== hudLast.timerScale) hudEl.timerFill.style.transform = `scaleX(${(hudLast.timerScale = sc)})`;
       },
       hide() {
         hud.classList.add('hidden');
+        document.body.classList.remove('in-booth');
       },
     },
 

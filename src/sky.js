@@ -14,7 +14,7 @@ export function createSky(scene, horizonColor) {
       side: THREE.BackSide,
       depthWrite: false,
       uniforms: {
-        uTop: { value: new THREE.Color(0x020108) },
+        uTop: { value: new THREE.Color(0x0a1438) },
         uHorizon: { value: horizonColor.clone() },
         uGlow: { value: new THREE.Color(0x7a3326) },
         uSunDir: { value: new THREE.Vector3(-0.8, 0.05, 0.55).normalize() },
@@ -25,6 +25,7 @@ export function createSky(scene, horizonColor) {
         void main() {
           vDir = normalize(position);
           gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          gl_Position.z = gl_Position.w; // on the far plane: drawn only where nothing else is
         }`,
       fragmentShader: /* glsl */ `
         uniform vec3 uTop;
@@ -36,7 +37,7 @@ export function createSky(scene, horizonColor) {
         void main() {
           float h = vDir.y;
           vec3 c = mix(uHorizon, uTop, smoothstep(-0.02, 0.45, h));
-          c += uGlow * exp(-abs(h) * 16.0) * 0.45; // warm haze of a city celebrating
+          c += uGlow * (exp(-abs(h) * 14.0) * 0.6 + exp(-abs(h) * 4.0) * 0.18); // warm haze of a city celebrating
           float s = max(dot(normalize(vDir), uSunDir), 0.0);
           c += vec3(1.0, 0.55, 0.25) * pow(s, 18.0) * uSunGlow * 0.5; // the sunset's halo
           c += vec3(1.0, 0.8, 0.5) * pow(s, 260.0) * uSunGlow * 0.9; // the disc itself (kept under the bloom threshold)
@@ -44,7 +45,10 @@ export function createSky(scene, horizonColor) {
         }`,
     })
   );
-  dome.renderOrder = -10;
+  // Drawn last of the opaque objects, so the depth test throws away every sky pixel the mela
+  // already covers instead of shading the full screen first and painting over it.
+  dome.renderOrder = 1000;
+  dome.frustumCulled = false;
   group.add(dome);
 
   const N = 2200;
@@ -92,7 +96,7 @@ export function createSky(scene, horizonColor) {
       }`,
   });
   const stars = new THREE.Points(geo, starMat);
-  stars.renderOrder = -9;
+  stars.renderOrder = -9; // first of the transparent things (which all come after the dome)
   stars.frustumCulled = false;
   group.add(stars);
 

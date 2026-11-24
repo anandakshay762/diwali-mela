@@ -2,29 +2,97 @@ import * as THREE from 'three';
 import { Character, randomLook } from './character.js';
 import { NameTag } from './nametag.js';
 import { profile } from './profile.js';
+import { settings } from './settings.js';
+import { track, trackIds } from './track.js';
 
 /*
   Multiplayer client. Sends where our avatar is (world position of the character root, heading,
-  pose, speed, what it holds) at 10 Hz and mirrors everyone else with the same Character rig.
+  pose, speed, what it holds) at up to 10 Hz, only when it changed plus a 1 s keepalive, and
+  mirrors everyone else with the same Character rig. Positions travel as compact arrays: we send
+  ['s', x, y, z, heading, speed, action, held, vehicle] and the server's snapshot is
+  ['S', online, id, x, y, z, heading, speed, action, held, vehicle, id, ...] holding only the
+  visitors who moved (and each one at least every 2 s).
+  The vehicle field is 'ride' in the boat, at the wheel of a car, heli or plane a short code from
+  vehicles.js netCode() ('c1+0-2', 'h+5-12', 'p-30+45': kind, car index, pitch and roll in degrees),
+  and on a fixed ride the seat ('w3' gondola, 'k7' carousel animal, 't' train; rides.js netCode()).
+  Position and heading stay the seated character's, so an older client still draws the rider where
+  they are; a newer one draws the vehicle around them, or seats them on its own copy of the ride.
   Also carries waves, shared wish lanterns, scores for the leaderboards and the wish wall.
   Without a server it degrades to a local-only mode (own bests and wishes kept in the browser).
 */
 const SEND_MS = 100;
+const KEEPALIVE_MS = 1000;
+const SNAP_STRIDE = 9; // id + 8 state fields per visitor in an 'S' snapshot
 const STALE_MS = 12000;
 const LOCAL_KEY = 'melaLocalBoards';
 const BOARD_ORDER = { golgappa: 'desc', lap: 'asc', striker: 'desc' };
 const _v = new THREE.Vector3();
+// only the nearest few visitors are drawn (and posed): within 70 m, 8 on phones, 16 elsewhere
+const SHOW_R2 = 70 * 70;
+const AIR_R2 = 4 * SHOW_R2; // a heli or plane overhead stays drawn out to 140 m
+const CULL_S = 0.25;
+const VEH_RE = /^(c\d?|h|p)([+-]\d{1,2})([+-]\d{1,2})$/;
+const RIDE_RE = /^(?:[wk]\d{1,2}|t)$/; // a seat on the wheel, the carousel or the train (see main.js)
+const TWIN_R2 = 2 * 2;
+const _q = new THREE.Quaternion();
+const RAD = Math.PI / 180;
+const _vp = new THREE.Vector3();
 
+const wrap = (d) => Math.atan2(Math.sin(d), Math.cos(d));
+
+const ENV = import.meta.env ?? {};
+// Same-origin attempts that never open before we give up (a static host has no socket to retry).
+const SAME_ORIGIN_TRIES = 3;
+
+const ROOM_RE = /^(?!\.+$)[a-z0-9._-]{1,40}$/;
+
+/**
+ * The creator room this page belongs to, or '' for the plain mela. Everyone on the same creator
+ * link (mela.topmate.io/<slug>, or ?c=<slug>) meets in that creator's room and only there; the
+ * plain mela is single-player (it never opens a socket). Same lookup order as creatorStage.js
+ * (?c=, window.__MELA_CREATOR__, <meta name="mela-creator">).
+ */
+export function creatorRoom(params = new URLSearchParams(location.search)) {
+  let slug = params.get('c') || '';
+  if (!slug && typeof window.__MELA_CREATOR__ === 'string') slug = window.__MELA_CREATOR__;
+  if (!slug) slug = document.querySelector('meta[name="mela-creator"]')?.getAttribute('content') || '';
+  slug = slug.trim().toLowerCase();
+  return slug !== 'public' && ROOM_RE.test(slug) ? slug : '';
+}
+
+/** The analytics label for this page: the creator room, or 'public' for the plain (offline) mela. */
+export function melaRoom(params = new URLSearchParams(location.search)) {
+  return creatorRoom(params) || 'public';
+}
+
+/**
+ * VITE_WS_URL names a realtime server; a static build (VITE_STATIC=1) without one stays offline,
+ * and so does every page that is not a creator's mela.
+ */
 function defaultUrl() {
-  const env = import.meta.env?.VITE_WS_URL;
-  if (env) return env;
-  return `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  if (ENV.VITE_STATIC && !ENV.VITE_WS_URL) return null;
+  const room = creatorRoom();
+  if (!room) return null;
+  const base = ENV.VITE_WS_URL || `${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`;
+  const u = new URL(base, location.href);
+  u.searchParams.set('room', room);
+  const ids = trackIds(); // analytics: realtime rows carry the tracker's visitor + session
+  if (ids?.vid) u.searchParams.set('vid', ids.vid);
+  if (ids) u.searchParams.set('sid', ids.sid);
+  return u.href;
+}
+
+/** Director / trailer capture never joins a room: no remote visitors in shots, nothing random. */
+function offlinePage() {
+  const p = new URLSearchParams(location.search);
+  return p.has('director') || p.has('nonet') || typeof window.__director !== 'undefined';
 }
 
 export class Net {
   constructor(ctx, { url = defaultUrl() } = {}) {
     this.ctx = ctx;
     this.url = url;
+    this.room = url ? new URL(url).searchParams.get('room') || '' : ''; // the creator room we join
     this.ws = null;
     this.id = null;
     this.connected = false;
@@ -34,8 +102,12 @@ export class Net {
     this.wishes = [];
     this.listeners = {};
     this.lastSend = 0;
+    this.lastState = [];
+    this.lastSent = 0;
     this.retry = 1000;
-    this.enabled = true;
+    this.failures = 0; // consecutive attempts that never opened
+    this.everOpened = false; // a server that answered once is only restarting: keep retrying it
+    this.enabled = !!url;
     this.voice = null; // set by Voice
     this.tmpQ = new THREE.Quaternion();
     this.tmpE = new THREE.Euler(0, 0, 0, 'YXZ');
@@ -71,7 +143,7 @@ export class Net {
   // ---------- connection ----------
 
   connect() {
-    if (!this.enabled || this.ws) return;
+    if (!this.enabled || this.ws || offlinePage()) return;
     let ws;
     try {
       ws = new WebSocket(this.url);
@@ -82,6 +154,9 @@ export class Net {
     ws.onopen = () => {
       this.connected = true;
       this.retry = 1000;
+      this.failures = 0;
+      this.everOpened = true;
+      this.lastState = [];
       this.send({ t: 'hello', name: profile.name, handle: profile.handle, look: this.ctx.player.char.look });
       this.emit('status', true);
     };
@@ -95,12 +170,15 @@ export class Net {
       this.handle(m);
     };
     ws.onclose = () => {
+      const opened = this.connected;
       this.connected = false;
       this.ws = null;
       this.id = null;
       for (const id of [...this.remote.keys()]) this.removeRemote(id);
       this.online = 1;
       this.emit('status', false);
+      // no server here at all (it never answered): stay local instead of retrying forever
+      if (!opened && ++this.failures >= SAME_ORIGIN_TRIES && !this.everOpened && !ENV.VITE_WS_URL) return;
       setTimeout(() => this.connect(), this.retry);
       this.retry = Math.min(15000, this.retry * 1.7);
     };
@@ -113,23 +191,31 @@ export class Net {
 
   // ---------- outgoing ----------
 
-  sendState() {
+  /** Sends our state when it changed since the last send, or as a keepalive. */
+  sendState(now) {
     const { player } = this.ctx;
     const root = player.char.root;
     root.getWorldPosition(_v);
     root.getWorldQuaternion(this.tmpQ);
     this.tmpE.setFromQuaternion(this.tmpQ);
-    this.send({
-      t: 'state',
-      x: +_v.x.toFixed(2),
-      y: +_v.y.toFixed(2),
-      z: +_v.z.toFixed(2),
-      r: +this.tmpE.y.toFixed(3),
-      a: player.char.action,
-      s: +player.speed.toFixed(2),
-      hr: player.char.holdR,
-      v: player.mode === 'ride' ? 'ride' : null,
-    });
+    const st = [
+      's',
+      +_v.x.toFixed(2),
+      +_v.y.toFixed(2),
+      +_v.z.toFixed(2),
+      +this.tmpE.y.toFixed(2),
+      +player.speed.toFixed(1),
+      player.char.action || 0,
+      player.char.holdR || 0,
+      player.mode === 'ride' ? this.vehicleCode?.(this.tmpE) || 'ride' : 0,
+    ];
+    const last = this.lastState;
+    let same = last.length === st.length;
+    for (let i = 1; same && i < st.length; i++) same = st[i] === last[i];
+    if (same && now - this.lastSent < KEEPALIVE_MS) return;
+    this.lastState = st;
+    this.lastSent = now;
+    this.send(st);
   }
 
   sendLook() {
@@ -141,8 +227,9 @@ export class Net {
     if (!this.connected) this.addWish({ name: profile.name, handle: profile.handle, text, at: Date.now() });
   }
 
-  sendBubble(text) {
+  sendBubble(text, kind = 'bubble') {
     this.send({ t: 'bubble', text });
+    track('chat_sent', { kind, len: String(text).length, connected: this.connected, online: this.online }); // the text itself is stored by the realtime server
   }
 
   submitScore(kind, value) {
@@ -155,23 +242,50 @@ export class Net {
     player.char.setAction('wave');
     ui.bubble((o) => player.headWorld(o), `Hi ${r.name}! 👋`, 1.8);
     this.send({ t: 'wave', to: r.id });
-    this.sendBubble(`Hi ${r.name}! 👋`);
+    track('wave', { dir: 'out', to: r.name, online: this.online });
+    this.sendBubble(`Hi ${r.name}! 👋`, 'wave');
     tasks.wait(1.6).then(() => player.char.action === 'wave' && player.char.clearAction());
   }
 
   // ---------- incoming ----------
 
+  /** Moves (or creates) a remote visitor from a snapshot entry. */
+  applyState(id, x, y, z, heading, speed, action, holdR, veh, now) {
+    if (!Number.isFinite(x)) return;
+    const r = this.remote.get(id) ?? this.addRemote({ id, n: 'Visitor', h: '' });
+    r.target.set(x, y, z);
+    r.heading = heading ?? r.heading;
+    r.action = action;
+    r.speed = speed ?? 0;
+    r.holdR = holdR;
+    this.setVehicle(r, veh);
+    r.seenAt = now;
+    if (!r.ready) {
+      r.cur.copy(r.target);
+      r.ready = true;
+    }
+  }
+
   handle(m) {
     const { ui, lanterns } = this.ctx;
-    switch (m.t) {
+    switch (Array.isArray(m) ? m[0] : m.t) {
       case 'welcome':
+        // a hub that put us anywhere but our creator's room (an old server's 'public' fallback):
+        // leave and play alone rather than mix with other creators' visitors
+        if (m.room && this.room && m.room !== this.room) {
+          this.enabled = false;
+          this.ws?.close(4003, 'wrong room');
+          break;
+        }
         this.id = m.id;
         for (const p of m.players) this.addRemote(p);
         for (const p of m.players) this.voice?.peerJoined(p.id, !!p.mic);
         this.boards = this.mergeBoards(m.boards);
         this.wishes = m.wishes || [];
+        this.online = (m.players?.length ?? 0) + 1;
         this.emit('boards');
         this.emit('wishes');
+        this.emit('online', this.online);
         break;
       case 'join':
         this.addRemote(m.p);
@@ -181,7 +295,20 @@ export class Net {
       case 'leave':
         this.removeRemote(m.id);
         break;
+      case 'S': {
+        // compact snapshot: ['S', online, id, x, y, z, r, s, a, hr, v, id, ...]
+        this.online = m[1];
+        const now = performance.now();
+        for (let i = 2; i + SNAP_STRIDE <= m.length; i += SNAP_STRIDE) {
+          const id = m[i];
+          if (id === this.id) continue;
+          this.applyState(id, m[i + 1], m[i + 2], m[i + 3], m[i + 4], m[i + 5], m[i + 6] || null, m[i + 7] || null, m[i + 8] || null, now);
+        }
+        this.emit('online', this.online);
+        break;
+      }
       case 'snap':
+        // the older object snapshot (kept so a client and server from different deploys still talk)
         this.online = m.n;
         for (const p of m.players) {
           if (p.id === this.id || p.x === undefined) continue;
@@ -191,6 +318,7 @@ export class Net {
           r.action = p.a ?? null;
           r.speed = p.s ?? 0;
           r.holdR = p.hr ?? null;
+          this.setVehicle(r, p.v);
           r.seenAt = performance.now();
           if (!r.ready) {
             r.cur.copy(r.target);
@@ -210,6 +338,7 @@ export class Net {
       case 'wave': {
         const r = this.remote.get(m.from);
         ui.toast(`👋 ${m.n} waved at you`, 2500, { important: true });
+        track('wave', { dir: 'in', from: m.n });
         const { player, tasks } = this.ctx;
         if (player.mode === 'walk') {
           player.char.setAction('wave');
@@ -259,15 +388,24 @@ export class Net {
     }
     const char = new Character(p.look || randomLook());
     char.root.visible = false;
+    char.root.rotation.order = 'YXZ'; // heading, then a vehicle's pitch and roll
     this.ctx.scene.add(char.root);
     const tag = new NameTag(char.headTop, { name: p.n || 'Visitor', handle: p.h || '' });
-    const r = { id: p.id, char, tag, name: p.n || 'Visitor', cur: new THREE.Vector3(), target: new THREE.Vector3(), heading: 0, action: null, speed: 0, holdR: null, ready: false, seenAt: performance.now() };
+    const r = { id: p.id, char, tag, name: p.n || 'Visitor', cur: new THREE.Vector3(), target: new THREE.Vector3(), heading: 0, action: null, speed: 0, holdR: null, ready: false, seenAt: performance.now(), veh: null, vkey: null, pitch: 0, roll: 0, pitchT: 0, rollT: 0, vehicle: null, seat: null };
     if (p.x !== undefined) {
       r.target.set(p.x, p.y, p.z);
       r.cur.copy(r.target);
+      // pose too: a visitor standing still is only resent every couple of seconds now
+      r.heading = p.r ?? 0;
+      r.char.root.rotation.y = r.heading;
+      r.action = p.a ?? null;
+      r.speed = p.s ?? 0;
+      r.holdR = p.hr ?? null;
+      this.setVehicle(r, p.v);
       r.ready = true;
     }
     this.remote.set(p.id, r);
+    this.cullT = 0;
     return r;
   }
 
@@ -275,8 +413,42 @@ export class Net {
     const r = this.remote.get(id);
     if (!r) return;
     this.voice?.dropPeer(id);
-    r.char.root.removeFromParent();
     this.remote.delete(id);
+    // free the visitor's meshes and name label: people come and go all evening
+    r.boat?.removeFromParent();
+    r.vehicle?.group.removeFromParent(); // its geometry is shared (vehicles.js), nothing to free
+    r.tag.dispose();
+    r.char.dispose();
+  }
+
+  /**
+   * Reads a visitor's vehicle field: a car/heli/plane code gives them a light copy of that vehicle
+   * (made once, kept while they drive, dropped when they get out or switch), anything else none.
+   */
+  setVehicle(r, code) {
+    code = typeof code === 'string' ? code : null;
+    if (code === r.veh) return;
+    r.veh = code;
+    const seat = code && RIDE_RE.test(code) ? (this.rideSeat?.(code) ?? null) : null;
+    if (r.seat && !seat) r.cur.copy(r.target); // off the ride: straight to where they stepped down
+    r.seat = seat;
+    const m = code && VEH_RE.exec(code);
+    const key = m ? m[1] : null;
+    if (m) {
+      r.pitchT = +m[2] * RAD;
+      r.rollT = +m[3] * RAD;
+    }
+    if (key === r.vkey) return;
+    const fresh = !r.vkey;
+    r.vkey = key;
+    r.vehicle?.group.removeFromParent();
+    r.vehicle = key ? (this.makeVehicle?.(key) ?? null) : null;
+    if (r.vehicle) this.ctx.scene.add(r.vehicle.group);
+    if (fresh && key) {
+      r.pitch = r.pitchT;
+      r.roll = r.rollT;
+    }
+    if (!key) r.pitch = r.roll = r.pitchT = r.rollT = 0;
   }
 
   nearest() {
@@ -284,7 +456,7 @@ export class Net {
     let best = null;
     let bd = Infinity;
     for (const r of this.remote.values()) {
-      if (!r.ready) continue;
+      if (!r.ready || !r.shown) continue; // never wave at someone the culling hides
       const d = Math.hypot(r.cur.x - p.x, r.cur.z - p.z);
       if (d < bd) {
         bd = d;
@@ -348,10 +520,35 @@ export class Net {
 
   // ---------- per frame ----------
 
+  /** Marks the nearest K ready visitors within 70 m as shown. */
+  cullRemote() {
+    const p = this.ctx.player.pos;
+    const near = (this._near ??= []);
+    near.length = 0;
+    for (const r of this.remote.values()) {
+      r.shown = false;
+      if (!r.ready) continue;
+      r.d2 = (r.cur.x - p.x) ** 2 + (r.cur.z - p.z) ** 2;
+      if (r.d2 < (r.vkey === 'h' || r.vkey === 'p' ? AIR_R2 : SHOW_R2)) near.push(r);
+    }
+    near.sort((a, b) => a.d2 - b.d2);
+    const k = Math.min(near.length, settings.tier === 'low' ? 8 : 16);
+    for (let i = 0; i < k; i++) near[i].shown = true;
+  }
+
   update(dt, now) {
+    // our own parked vehicles hidden last frame under someone's copy: shown again unless still covered
+    const twins = (this._twins ??= []);
+    for (let i = 0; i < twins.length; i++) twins[i].visible = true;
+    twins.length = 0;
     if (this.connected && now - this.lastSend > SEND_MS) {
       this.lastSend = now;
-      this.sendState();
+      this.sendState(now);
+    }
+    this.cullT = (this.cullT ?? 0) - dt;
+    if (this.cullT <= 0) {
+      this.cullT = CULL_S;
+      this.cullRemote();
     }
     for (const [id, r] of this.remote) {
       if (now - r.seenAt > STALE_MS) {
@@ -359,7 +556,6 @@ export class Net {
         continue;
       }
       if (!r.ready) continue;
-      r.char.root.visible = true;
       const k = 1 - Math.exp(-dt * 12);
       r.cur.lerp(r.target, k);
       const root = r.char.root;
@@ -367,6 +563,54 @@ export class Net {
       let d = r.heading - root.rotation.y;
       d = Math.atan2(Math.sin(d), Math.cos(d));
       root.rotation.y += d * k;
+      root.visible = !!r.shown;
+      // at the wheel: tilt the rider with the vehicle and build the vehicle around their seat
+      if (r.vkey) {
+        r.pitch += wrap(r.pitchT - r.pitch) * k;
+        r.roll += wrap(r.rollT - r.roll) * k;
+        root.rotation.x = r.pitch;
+        root.rotation.z = r.roll;
+      } else if (root.rotation.x || root.rotation.z) root.rotation.x = root.rotation.z = 0; // out and upright
+      const veh = r.vehicle;
+      if (veh) {
+        veh.group.visible = !!r.shown;
+        if (r.shown) {
+          veh.group.rotation.copy(root.rotation);
+          veh.group.position.copy(root.position).sub(_vp.copy(veh.seat).applyEuler(root.rotation));
+          if (veh.spin) veh.spin.rotation[veh.axis] += dt * (veh.axis === 'y' ? 24 : 40);
+          // they are sitting in it where ours is parked: draw theirs only
+          const tw = veh.twin;
+          if (tw && tw !== this.ownVehicle?.() && tw.group.position.distanceToSquared(veh.group.position) < TWIN_R2) {
+            const kids = veh.twinKids;
+            for (let i = 0; i < kids.length; i++) {
+              if (!kids[i].visible) continue;
+              kids[i].visible = false;
+              twins.push(kids[i]);
+            }
+          }
+        }
+      }
+      // on the wheel, the carousel or the train: in our own gondola / animal / carriage seat
+      const seat = r.seat;
+      if (seat) {
+        root.position.copy(seat.local).applyMatrix4(seat.obj.matrixWorld);
+        r.cur.copy(root.position);
+        root.quaternion.copy(seat.obj.getWorldQuaternion(_q));
+      }
+      // a visitor at the oars is sent as a rower on the seat: draw a boat under them
+      const rowing = r.action === 'row' && !!this.makeBoat;
+      if (rowing && !r.boat) this.ctx.scene.add((r.boat = this.makeBoat()));
+      if (r.boat) {
+        r.boat.visible = rowing && !!r.shown;
+        if (r.boat.visible) {
+          // the seat sits 1.6 m aft of the boat's middle, 0.55 m down, and faces the stern
+          const yaw = root.rotation.y - Math.PI;
+          r.boat.position.set(root.position.x - Math.sin(yaw) * 1.6, root.position.y + 0.55, root.position.z - Math.cos(yaw) * 1.6);
+          r.boat.rotation.set(0, yaw, 0);
+        }
+      }
+      if (!r.shown) continue;
+      if (r.action === 'row') r.char.actionParam += r.cur.distanceToSquared(r.target) > 1e-4 ? dt * 4.5 : 0;
       if (r.action !== r.char.action) {
         if (r.action) r.char.setAction(r.action);
         else r.char.clearAction();

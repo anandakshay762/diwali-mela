@@ -1,7 +1,9 @@
 import * as THREE from 'three';
-import { Character, randomLook } from './character.js';
+import { Character, randomLook, setViewer } from './character.js';
 import { balloonMesh } from './items.js';
 import { pick, rand, setLayer } from './utils.js';
+import { slot, slotSet } from './personalSlots.js';
+import { track } from './track.js';
 
 /*
   Mela-goers wander a hand-made path graph. Some nodes are places to linger: in front of stalls,
@@ -73,17 +75,17 @@ const LINES = [
   'Happy Diwali! 🪔',
   'Shubh Deepavali! ✨',
   'Saal Mubarak! 🎉',
-  'Have you tried the jalebi? 😋',
-  'The ring toss is tricky! ⭕',
-  'Ride the giant wheel, the view is amazing! 🎡',
+  'shout.crowd.1', // personal slots (a creator's mela can put their own lines in the crowd's mouth)
+  'shout.crowd.2',
+  'shout.crowd.3',
   'Don’t miss the grand show! 🎆',
   'Aapko bhi Happy Diwali! 🙏',
   'Golgappe khaye? Ekdum teekha! 🌶️',
   'Float a diya at the ghat 🌊',
 ];
+let STRING_MAT = null; // one material for every kid's balloon string
 const ACTIONS = { game: ['clap', 'cheer', null], sky: ['lookUp'], pray: ['namaste'], stall: [null, null, 'give'], look: [null], river: [null] };
 
-const _v = new THREE.Vector3();
 
 export class Crowd {
   constructor(ctx, count = 22) {
@@ -93,15 +95,22 @@ export class Crowd {
     for (let i = 0; i < count; i++) {
       const kid = i % 5 === 0;
       const char = new Character(randomLook({ kid }));
+      let balloon = null;
       if (kid && Math.random() < 0.7) {
-        // balloon on a string, hung from the (scaled) body above the raised right hand
+        // balloon on a string: the string rises from the raised right hand to the knot, the
+        // balloon floats above it. Both hang off a pivot at the hand so the pair sways together.
         const b = balloonMesh(pick([0xff006e, 0xffbe0b, 0x3a86ff, 0x06d6a0]));
-        b.position.set(-0.3, 2.35, 0.3);
+        b.position.set(-0.03, 0.85, -0.03);
         const string = new THREE.Line(
-          new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.3, 2.1, 0.3), new THREE.Vector3(-0.27, 1.5, 0.33)]),
-          new THREE.LineBasicMaterial({ color: 0xdddddd })
+          new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-0.03, 0.6, -0.03), new THREE.Vector3(0, 0, 0)]),
+          (STRING_MAT ??= new THREE.LineBasicMaterial({ color: 0xdddddd }))
         );
-        char.body.add(b, string);
+        const pivot = new THREE.Group();
+        pivot.position.set(-0.27, 1.5, 0.33);
+        pivot.add(b, string);
+        pivot.userData.phase = rand(0, 6);
+        char.body.add(pivot);
+        balloon = pivot;
         char.holdR = 'holdUp';
       }
       setLayer(char.root, 1);
@@ -119,7 +128,7 @@ export class Crowd {
         offset: rand(-1.2, 1.2),
         wait: rand(0, 3),
         greeting: false,
-        lod: i % 3,
+        balloon,
       };
       this.pickNext(npc);
       this.npcs.push(npc);
@@ -132,7 +141,6 @@ export class Crowd {
         action: () => this.greet(npc),
       });
     }
-    this.frame = 0;
   }
 
   pickNext(npc) {
@@ -160,11 +168,15 @@ export class Crowd {
     ui.bubble((o) => player.headWorld(o), 'Happy Diwali! 🪔', 2.2);
     await tasks.wait(0.7);
     npc.char.setAction('namaste');
-    ui.bubble((o) => npc.char.headTop.getWorldPosition(o), pick(LINES), 2.8);
+    // a creator's own crowd lines come up half the time
+    const mine = LINES.filter((l) => l.startsWith('shout.') && slotSet(l));
+    const line = mine.length && Math.random() < 0.5 ? pick(mine) : pick(LINES);
+    ui.bubble((o) => npc.char.headTop.getWorldPosition(o), line.startsWith('shout.') ? slot(line) : line, 2.8);
     await tasks.wait(1.6);
     player.char.clearAction();
     player.setBusy(false);
     passport.stamp('greet');
+    track('activity', { what: 'greet' });
     await tasks.wait(0.8);
     npc.char.clearAction();
     npc.greeting = false;
@@ -200,7 +212,9 @@ export class Crowd {
 
   update(dt, camera) {
     const { player, world } = this.ctx;
-    this.frame++;
+    // every Character past 60 m (here, at the stalls, rides and shows) animates every 3rd frame
+    setViewer(camera.position);
+    this.t = (this.t ?? 0) + dt;
     for (const npc of this.npcs) {
       let speed = 0;
       if (npc.greeting) {
@@ -259,9 +273,13 @@ export class Crowd {
       }
       npc.char.root.position.copy(npc.pos);
       npc.char.root.rotation.y = npc.heading;
-      // distant people animate every third frame to save time
-      const far = _v.copy(npc.pos).distanceToSquared(camera.position) > 3600;
-      if (!far || this.frame % 3 === npc.lod) npc.char.update(far ? dt * 3 : dt, { speed });
+      npc.char.update(dt, { speed });
+      if (npc.balloon) {
+        // a slow sway about the hand, a bit livelier while walking
+        const ph = npc.balloon.userData.phase;
+        const k = speed > 0 ? 0.14 : 0.08;
+        npc.balloon.rotation.set(Math.sin(this.t * 1.3 + ph) * k, 0, Math.sin(this.t * 0.9 + ph * 1.7) * k);
+      }
     }
   }
 }

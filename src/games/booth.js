@@ -8,7 +8,7 @@ export const BOOTH = { W: 7, D: 5, H: 3.6, X: 29 };
  * A game booth on Khel Gali. Built in local space with its open front facing +z, then turned
  * to face west, so local (x, y, z) maps to world (X - z, y, boothZ + x).
  */
-export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = true, roof = true }) {
+export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = true, roof = true, lamp = true }) {
   const { W, D, H, X } = BOOTH;
   const g = new THREE.Group();
   g.position.set(X, 0, z);
@@ -22,7 +22,9 @@ export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = tr
   };
 
   const wood = new THREE.MeshStandardMaterial({ color: 0x6b3f22, roughness: 0.8 });
-  const fabric = new THREE.MeshStandardMaterial({ map: stripes(c1, c2), side: THREE.DoubleSide, roughness: 0.9 });
+  const cloth = stripes(c1, c2);
+  // lit-from-inside cloth: a little emissive so the booth glows at night without another real light
+  const fabric = new THREE.MeshStandardMaterial({ map: cloth, emissiveMap: cloth, emissive: new THREE.Color(0.3, 0.22, 0.15), side: THREE.DoubleSide, roughness: 0.9 });
   add(new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, D), wood), 0, 0.05, 0);
   add(new THREE.Mesh(new THREE.PlaneGeometry(W, H), fabric), 0, H / 2, -D / 2);
   for (const s of [-1, 1]) {
@@ -40,7 +42,7 @@ export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = tr
   // an open-top booth (the strongman tower) keeps its sign off to one side so the tower stays in view
   const signMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(roof ? 4.4 : 3.0, roof ? 1.15 : 0.8),
-    new THREE.MeshBasicMaterial({ map: signTexture(title, sub, sign), color: new THREE.Color(1.2, 1.2, 1.2) })
+    new THREE.MeshBasicMaterial({ map: signTexture(title, sub, sign), color: new THREE.Color(1, 1, 1) })
   );
   add(signMesh, roof ? 0 : -W / 2 + 1.75, roof ? H + 0.62 : H + 0.45, D / 2 + 0.32);
   if (!roof) {
@@ -52,6 +54,9 @@ export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = tr
     add(new THREE.Mesh(new THREE.BoxGeometry(W, 0.1, 0.12), wood), 0, 1.0, D / 2);
     for (const x of [-W / 2, -W / 4, 0, W / 4, W / 2]) add(new THREE.Mesh(new THREE.BoxGeometry(0.1, 1.0, 0.1), wood), x, 0.5, D / 2);
   }
+
+  // a warm string along the inside top of the back wall
+  lights.addStrand(w(-W / 2 + 0.2, H - 0.15, -D / 2 + 0.15), w(W / 2 - 0.2, H - 0.15, -D / 2 + 0.15), { sag: 0.2, spacing: 0.3, wire: false, palette: WARM_PALETTE, mode: 'steady' });
 
   const ex = W / 2 + 0.3;
   const ez = D / 2 + 0.3;
@@ -65,9 +70,15 @@ export function buildBooth(ctx, lights, { z, title, sub, c1, c2, sign, rail = tr
     lights.addStrand(w(-ex, H, -ez), w(ex, H, -ez), { sag: 0.05, spacing: 0.32, wire: false, palette: WARM_PALETTE });
   }
 
-  const light = new THREE.PointLight(0xffc27a, 12, 9, 2);
-  light.position.set(0, 3.1, 1.6);
-  g.add(light);
+  // one warm light for each pair of neighbouring booths (Khel Gali puts them 9 m apart and asks
+  // every 2nd one for it), hung out in the lane 2 m in front of the gap towards the next booth (+x
+  // is world +z) and below the roof line, so it reaches into both counters rather than flaring the
+  // side walls that meet at the gap
+  if (lamp) {
+    const light = new THREE.PointLight(0xffc27a, 50, 15, 2);
+    light.position.set(4.5, H - 0.3, D / 2 + 2);
+    g.add(light);
+  }
 
   setLayer(g, 1);
   ctx.world.colliders.push(

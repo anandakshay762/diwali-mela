@@ -34,47 +34,51 @@ import { settings } from './settings.js';
 import { Smoke } from './smoke.js';
 import { DayNight } from './daynight.js';
 import { Ambience } from './ambience.js';
-import { Net } from './net.js';
+import { Net, melaRoom } from './net.js';
+import { initTrack, track, sinceLoad, onTrackEnd, onTrackHide } from './track.js';
 import { buildDecor } from './decor.js';
-import { Creators } from './creators.js';
 import { Walls } from './wall.js';
 import { Train } from './train.js';
-import { Columbus } from './columbus.js';
 import { Ravan } from './ravan.js';
 import { Tambola } from './games/tambola.js';
-import { Kuan } from './kuan.js';
 import { CrowdScenes } from './extras.js';
 import { StringLights } from './stringLights.js';
 import { CONFIG } from './config.js';
 import { shadowify } from './utils.js';
 import { Voice } from './voice.js';
 import { LightPool } from './lightpool.js';
+import { TOUCH, tk } from './touch.js';
+import { startDirector, directorParams } from './director/director.js';
+import { loadCreatorConfig, applyCreator, personaliseIntro, stallIndexFor, ramleelaBoard } from './creatorStage.js';
+import { setMelaSlots, slot, melaReport } from './personalSlots.js';
+import { Billboard } from './billboard.js';
+import { createShare } from './share.js';
 
+// zone toasts: the line itself is a personal slot (zone.<id>); a controls hint, when there is one, is added after it
 const ZONES = [
-  { id: 'gate', x: 0, z: 62, r: 9, msg: '🪔 Welcome to the Topmate Diwali Mela!' },
-  { id: 'creators', x: 16, z: 65, r: 8, msg: '🤝 Creator Corner: meet Topmate creators and book a session' },
-  { id: 'selfie', x: 15, z: 56, r: 6, msg: '📸 Selfie Point: get your mela poster to share' },
-  { id: 'tambola', x: 33, z: 58, r: 8, msg: '🎟️ Tambola Tent: join a round of housie' },
-  { id: 'deepmala', x: -12, z: 65, r: 6, msg: '🪔 The Deepmala wall: bring a diya or kandeel and press Q to add yours' },
-  { id: 'ramleela', x: -30, z: 62, r: 14, msg: '📽️ Ramleela Maidan: take a seat for the Ramayan show' },
-  { id: 'ravan', x: -56, z: 64, r: 10, msg: '🔥 Ravan Dahan: the effigy burns on the countdown, or light the fuse yourself' },
-  { id: 'bazaar', x: 0, z: 32, r: 13, msg: '🛍️ The Bazaar: walk up to a stall and press E' },
-  { id: 'games', x: 22, z: 27, r: 12, msg: '🎯 Khel Gali: four mela games, win prizes!' },
-  { id: 'carousel', x: -20, z: 30, r: 9, msg: '🎠 The Carousel: hop on!' },
-  { id: 'columbus', x: -26, z: 50, r: 7, msg: '🚢 The Columbus swing: board at the steps' },
-  { id: 'cars', x: -53, z: 24, r: 24, msg: '🏁 Chakri Cars: a go-kart circuit · press E at a car' },
-  { id: 'airfield', x: 52, z: 22, r: 20, msg: '✈️ Pushpak Viman Airfield: fly the plane or the heli' },
-  { id: 'plaza', x: 0, z: 0, r: 10, msg: '🌸 Rangoli Chowk: join the garba!' },
-  { id: 'kuan', x: -24, z: 6, r: 10, msg: '🏍️ Maut ka Kuan: climb the stairs to watch the riders' },
-  { id: 'wheel', x: -34, z: -18, r: 12, msg: '🎡 The Giant Wheel: walk to the steps and press E' },
-  { id: 'fireworks', x: 36, z: -30, r: 15, msg: '🚀 Fireworks Zone: press 1 to launch a rocket' },
-  { id: 'ghat', x: 0, z: -42, r: 12, msg: '🏮 The Ghat: float a diya, release a lantern, or take a boat ride from the jetty' },
+  { id: 'gate', x: 0, z: 62, r: 9 },
+  { id: 'selfie', x: 15, z: 56, r: 6 },
+  { id: 'tambola', x: 33, z: 58, r: 8, hint: ['press E at the entrance to join a round', 'walk to the entrance and tap the button to join a round'] },
+  { id: 'deepmala', x: -12, z: 65, r: 6, hint: ['bring a diya or kandeel and press Q to add yours', 'bring a diya or kandeel, then tap the button to add yours'] },
+  { id: 'ramleela', x: -30, z: 62, r: 14 },
+  { id: 'ravan', x: -56, z: 64, r: 10 },
+  { id: 'bazaar', x: 0, z: 32, r: 13, hint: ['walk up to a stall and press E', 'walk up to a stall and tap the glowing button'] },
+  { id: 'games', x: 22, z: 27, r: 12 },
+  { id: 'carousel', x: -20, z: 30, r: 9 },
+  { id: 'cars', x: -53, z: 24, r: 24, hint: ['a go-kart circuit · press E at a car', 'a go-kart circuit · walk to a car and tap “Drive”'] },
+  { id: 'airfield', x: 52, z: 22, r: 20 },
+  { id: 'wheel', x: -34, z: -18, r: 12, hint: ['walk to the steps and press E', 'walk to the steps and tap the button'] },
+  { id: 'fireworks', x: 36, z: -30, r: 15, hint: ['press 1 to launch a rocket', 'tap 🚀 Rocket below to launch one'] },
+  { id: 'ghat', x: 0, z: -42, r: 12 },
 ];
+const zoneToast = (z) => {
+  const line = slot(`zone.${z.id}`);
+  return z.hint ? `${line}: ${tk(...z.hint)}` : line;
+};
 
 const face = (x, z, tx, tz) => Math.atan2(tx - x, tz - z);
 const PLACES = {
   gate: [0, 70, Math.PI],
-  creators: [16, 70, 0],
   selfie: [12.6, 56.4, Math.PI / 2],
   tambola: [33, 67, Math.PI],
   ramleela: [-30, 52, 0],
@@ -83,29 +87,143 @@ const PLACES = {
   games: [19, 27, Math.PI / 2],
   train: [12.5, 36, Math.PI / 2],
   carousel: [-16, 30, -Math.PI / 2],
-  columbus: [-26, 55, Math.PI],
   cars: [-37.5, 21, -Math.PI / 2],
   airfield: [44, 18, Math.PI / 2],
-  plaza: [0, 12, Math.PI],
-  kuan: [-14, 10, -Math.PI / 2],
+  plaza: [0, 12, Math.PI], // the open chowk (no chip; the bench and ?place= use it)
   wheel: [-34, -12, Math.PI],
   fireworks: [8, -2, face(8, -2, 36, -30)],
   ghat: [0, -38, Math.PI],
 };
 
+// help lines per mode; `tap` is the phone version (walking is explained by the coach card instead)
 const HELP = {
-  walk: [['W A S D', 'Move'], ['run', 'Run'], ['jump', 'Jump'], ['interact', 'Interact'], ['Drag', 'Camera'], ['Scroll', 'Zoom'], ['photo', 'Photo'], ['look', 'Change look'], ['talk', 'Voice chat'], ['passport', 'Passport']],
-  ride: [['interact', 'Get off'], ['Drag', 'Look around'], ['Scroll', 'Zoom']],
-  busy: [['Drag', 'Camera']],
-  anim: [],
+  walk: { key: [['W A S D', 'Move'], ['run', 'Run'], ['jump', 'Jump'], ['interact', 'Interact'], ['Drag', 'Camera'], ['Scroll', 'Zoom'], ['photo', 'Photo'], ['look', 'Change look'], ['talk', 'Voice chat'], ['passport', 'Passport']], tap: [] },
+  ride: { key: [['interact', 'Get off'], ['Drag', 'Look around'], ['Scroll', 'Zoom']], tap: [['👆', 'Tap “Get off” to get off'], ['👉', 'Drag to look around']] },
+  busy: { key: [['Drag', 'Camera']], tap: [] },
+  anim: { key: [], tap: [] },
 };
 
 const nextFrame = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
 
+/*
+  Adaptive resolution. Phones start a little above 1x (a 2.6x screen at 1x looks jagged) and the
+  governor raises the pixel ratio while frames have headroom and drops it when they don't. It looks
+  at 1.5 s windows of frame times against a 60 fps budget (or 30 fps when the display itself is
+  capped there, as in a phone's power-saving mode), needs three good windows in a row to step up,
+  and after a level fails it stays below it for a while (30 s, doubling each time it fails again),
+  so it settles instead of thrashing. A step down that doesn't make frames faster (the CPU, not the
+  pixels, is the bottleneck) is undone and further drops pause for a minute.
+*/
+class ResolutionGovernor {
+  constructor({ levels, start, apply, enabled = true }) {
+    this.levels = levels;
+    this.i = Math.max(0, levels.indexOf(start));
+    this.apply = apply;
+    this.enabled = enabled && levels.length > 1;
+    this.blockUntil = 0; // levels >= blockLevel are off-limits until then
+    this.blockLevel = Infinity;
+    this.backoff = 30000;
+    this.noDropUntil = 0;
+    this.lastUp = { at: -1e9, level: 0 };
+    this.probe = null; // a step down we are checking actually helped
+    this.cap30 = false; // learned: the display (not the GPU) holds frames at 33 ms
+    this.changes = 0;
+    this.last = { mean: 0, slow: 0, work: 0, budget: 16.7 };
+    this.reset(2500);
+  }
+
+  get pixelRatio() {
+    return this.levels[this.i];
+  }
+
+  /** Forget the current window (after a resize, a level change, a hidden tab, a throttled stretch). */
+  reset(settleMs = 2000) {
+    this.ignoreUntil = performance.now() + settleMs;
+    this.n = this.sum = this.slowN = this.capN = this.work = this.winStart = 0;
+    this.good = this.bad = 0;
+  }
+
+  sample(dtMs, workMs) {
+    if (!this.enabled) return;
+    const now = performance.now();
+    if (now < this.ignoreUntil || dtMs <= 0 || dtMs > 250) return;
+    if (!this.winStart) this.winStart = now;
+    this.n++;
+    this.sum += dtMs;
+    this.work += workMs;
+    if (dtMs > 1000 / 60 * 1.45) this.slowN++;
+    if (dtMs > 31.5 && dtMs < 35.5) this.capN++;
+    if (now - this.winStart < 1500 || this.n < 20) return;
+    const mean = this.sum / this.n;
+    const work = this.work / this.n;
+    // Frames locked to 33 ms look the same whether the display runs at 30 Hz (power saving) or a
+    // GPU-bound frame just misses every other 60 Hz vsync, so a lock alone proves nothing. Only once
+    // a step down failed to unlock it is 30 fps taken as the budget.
+    const locked = this.capN / this.n > 0.9 && work < 12;
+    const capped = this.cap30 && locked;
+    const budget = capped ? 1000 / 30 : 1000 / 60;
+    const slow = capped ? 0 : this.slowN / this.n;
+    this.last = { mean: +mean.toFixed(1), slow: +slow.toFixed(2), work: +work.toFixed(1), budget: +budget.toFixed(1) };
+    this.n = this.sum = this.slowN = this.capN = this.work = 0;
+    this.winStart = now;
+
+    if (this.probe) {
+      const p = this.probe;
+      this.probe = null;
+      if (mean > p.mean * 0.9) {
+        // dropping the resolution bought nothing: go back and leave it alone for a minute
+        if (locked && p.locked) this.cap30 = true;
+        this.noDropUntil = now + 60000;
+        this.blockLevel = Infinity;
+        this.step(p.from - this.i);
+        return;
+      }
+    }
+    const tooSlow = mean > budget * 1.22 || slow > 0.15;
+    const roomy = mean < budget * 1.06 && slow < 0.03;
+    this.bad = tooSlow ? this.bad + 1 : 0;
+    this.good = roomy ? this.good + 1 : 0;
+    const lvl = this.pixelRatio;
+    const cpuBound = work > mean * 0.8;
+    // a level we only just climbed to gets one bad window, not two, so a failed probe barely shows
+    const fresh = this.lastUp.level === lvl && now - this.lastUp.at < 8000;
+    if ((this.bad >= 2 || (fresh && this.bad >= 1)) && this.i > 0 && now > this.noDropUntil && !(cpuBound && this.levels[this.i - 1] < 1)) {
+      // a level that fails soon after we climbed to it is blocked for longer each time
+      if (now - this.lastUp.at < 20000 && this.lastUp.level === lvl) this.backoff = Math.min(this.backoff * 2, 300000);
+      this.blockLevel = lvl;
+      this.blockUntil = now + this.backoff;
+      const from = this.i;
+      this.step(-1);
+      this.probe = { from, mean, locked };
+    } else if (this.good >= 3 && this.i < this.levels.length - 1) {
+      const next = this.levels[this.i + 1];
+      if (next >= this.blockLevel && now < this.blockUntil) return;
+      this.lastUp = { at: now, level: next };
+      this.step(1);
+    }
+  }
+
+  step(d) {
+    if (!d) return;
+    this.i += d;
+    this.changes++;
+    this.apply(this.pixelRatio);
+    this.reset();
+  }
+
+  get state() {
+    const now = performance.now();
+    return { pixelRatio: this.pixelRatio, levels: this.levels, enabled: this.enabled, changes: this.changes, blockedFrom: now < this.blockUntil ? this.blockLevel : null, holdDrops: now < this.noDropUntil, cap30: this.cap30, ...this.last };
+  }
+}
+
+// Every face the canvas textures use; the sample text pulls in the Devanagari subsets too (gate sign, Pushpak plate).
+const CANVAS_FONTS = [['64px "Yatra One"', 'Mela शुभ दीपावली'], ['600 24px Poppins', 'Mela पुष्पक'], ['500 24px Poppins'], ['400 24px Poppins'], ['700 24px Poppins']];
+
 async function loadFonts() {
   try {
     await Promise.race([
-      Promise.all([document.fonts.load('64px "Yatra One"'), document.fonts.load('600 24px Poppins')]),
+      Promise.all(CANVAS_FONTS.map(([f, text]) => document.fonts.load(f, text))),
       new Promise((r) => setTimeout(r, 2500)),
     ]);
   } catch {
@@ -114,7 +232,14 @@ async function loadFonts() {
 }
 
 async function init() {
+  const fontsReady = loadFonts(); // fetched while the renderer and lights are set up
   const params = new URLSearchParams(location.search);
+  const director = directorParams(params); // ?director=<shot>: frame-stepped capture (see director/)
+  const viewW0 = () => director?.width ?? innerWidth;
+  const viewH0 = () => director?.height ?? innerHeight;
+  const creatorCfg = loadCreatorConfig(params); // ?c=<slug> / ?cfg=: a creator's own mela
+  const room = melaRoom(params);
+  initTrack({ room, slug: room === 'public' ? '' : room }); // off in director / ?nonet pages
   settings.load();
   profile.load();
   const look = { ...randomPlayerLook(), ...(profile.look || {}) };
@@ -138,31 +263,39 @@ async function init() {
   };
 
   await loading();
-  await loadFonts(); // sign textures are drawn on canvas, so fonts must be ready first
 
   // The canvas is transparent so the Ramleela screen (a CSS3D YouTube embed behind it) can show through.
-  const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+  // No antialias: everything goes through the composer's (non-multisampled) render target, so canvas
+  // MSAA only cost memory and bandwidth. Sharpness comes from the governor's pixel ratio instead.
+  const renderer = new THREE.WebGLRenderer({ antialias: false, alpha: true, powerPreference: 'high-performance' });
   settings.detect(renderer);
   if (params.get('tier')) settings.quality = params.get('tier');
   const tier = settings.tier;
   const low = tier === 'low';
-  renderer.setPixelRatio(low ? 1 : Math.min(window.devicePixelRatio, 1.75));
-  renderer.setSize(innerWidth, innerHeight);
+  // pixel-ratio steps the governor moves between; &dpr=1.5 pins one (and switches the governor off)
+  const dpr = window.devicePixelRatio || 1;
+  const maxPr = Math.min(dpr, low ? 2 : 1.75);
+  const levels = [...new Set([...(low ? [0.8, 1, 1.25, 1.5, 1.75, 2] : [1, 1.25, 1.5, 1.75]).filter((v) => v < maxPr), maxPr])];
+  const startPr = low ? Math.min(maxPr, dpr >= 2 ? 1.25 : 1) : settings.midGpu ? Math.min(maxPr, 1.25) : maxPr;
+  const pinnedPr = Number(params.get('dpr')) || 0;
+  renderer.setPixelRatio(pinnedPr || startPr);
+  document.body.classList.toggle('low', low); // style.css drops the backdrop blur on the phone tier
+  renderer.setSize(viewW0(), viewH0());
   renderer.setClearColor(0x000000, 0);
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.05;
+  renderer.toneMappingExposure = 1.08; // a warm festival night that keeps signs, posters and faces readable (bloom is thresholded before this)
   renderer.shadowMap.enabled = !low;
   renderer.shadowMap.type = THREE.PCFShadowMap;
   document.getElementById('app').appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  const fogColor = new THREE.Color(0x1a0d2c);
-  scene.fog = new THREE.FogExp2(fogColor, 0.0075);
+  const fogColor = new THREE.Color(0x2c1a36);
+  scene.fog = new THREE.FogExp2(fogColor, 0.0055);
 
-  const camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.1, 700);
+  const camera = new THREE.PerspectiveCamera(60, viewW0() / viewH0(), 0.1, 700);
   camera.layers.enable(1);
   scene.add(camera);
-  const hemi = new THREE.HemisphereLight(0x6a5aa0, 0x2a1a12, 0.8);
+  const hemi = new THREE.HemisphereLight(0x8e84cc, 0x5a3a24, 1.35);
   scene.add(hemi);
   // one directional light: the setting sun at dusk, a faint blue sky light at night; it casts the shadows
   const sun = new THREE.DirectionalLight(0xffa050, 1.2);
@@ -183,12 +316,17 @@ async function init() {
   }
 
   await loading();
+  await fontsReady; // sign textures are drawn on canvas, so fonts must be ready first
+  // a creator's mela renames signs, menus, prizes and toasts everywhere: known before anything is painted
+  const cfg = await creatorCfg;
+  setMelaSlots(cfg?.mela, cfg);
   const sky = createSky(scene, fogColor);
   const world = buildWorld(scene, { reflectionScale: low ? 0.25 : 0.5 });
   world.water.limitReflectionTo(camera); // reflections skip people and props (layer 1)
   const smoke = new Smoke(scene, low ? 500 : 1500);
   const audio = new MelaAudio();
   audio.mode = CONFIG.publicBuild ? 'band' : settings.music;
+  audio.musicVolume = settings.musicVolume;
   const ambience = new Ambience(audio);
   const fireworks = new Fireworks(scene, camera, audio, SITES.fireworks);
   const lanterns = new Lanterns(scene, camera);
@@ -201,13 +339,16 @@ async function init() {
 
   const composer = new EffectComposer(renderer);
   composer.addPass(new RenderPass(scene, camera));
-  const bloom = new UnrealBloomPass(new THREE.Vector2(low ? innerWidth / 2 : innerWidth, low ? innerHeight / 2 : innerHeight), 0.85, 0.55, 0.82);
+  // threshold just above 1.0: lamps, bulbs and fireworks (hdr() > 1) glow, while signs, posters and
+  // faces (drawn at <= 1.0) stay crisp instead of blooming to milk; sized in resize()
+  const bloom = new UnrealBloomPass(new THREE.Vector2(viewW0(), viewH0()), 0.7, 0.45, 1.05);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
 
   // ---------- UI + activities ----------
 
   let started = false;
+  let zone = null; // the zone the visitor is in (read by the analytics in the handlers below)
   let muted = false;
   let musicOn = true;
   try {
@@ -247,7 +388,17 @@ async function init() {
     ramayan.start();
     net.connect();
     if (profile.handle) profile.fetchTopmate();
-    ui.toast(`🪔 Welcome, ${profile.name}! Walk up to anything glowing and press ${settings.keys.interact.replace('Key', '')}`, 4500, { important: true });
+    share?.entered();
+    track('enter', { name: profile.name, handle: profile.handle, at_ms: sinceLoad() });
+    const welcome = () =>
+      ui.toast(
+        tk(`🪔 Welcome, ${profile.name}! Walk up to anything glowing and press ${settings.keys.interact.replace('Key', '')}`, `🪔 Welcome, ${profile.name}! Use the joystick to walk up to anything glowing, then tap the button`),
+        4500,
+        { important: true }
+      );
+    // phones: the coach card explains the controls first, the welcome follows once it's tapped away
+    if (!ui.showCoach(welcome)) welcome();
+    frameMelaScreen();
     if (profile.golden && profile.ref) setTimeout(() => ui.toast(`✨ Invited by @${profile.ref}: a golden kandeel is waiting for you at Kandeel House`, 5000, { important: true }), 5000);
   }
 
@@ -265,19 +416,23 @@ async function init() {
     onMic() {
       if (!started) return;
       voice.toggle();
+      track('activity', { what: 'voice', on: voice.live });
     },
     onAvatar() {
       if (!started || ui.modalOpen) return;
       if (player.mode !== 'walk') return ui.toast('Finish what you’re doing first 🙂');
       customizer.open('edit');
+      track('customize', { action: 'open' });
     },
     onSettings(key) {
+      track('activity', { what: 'setting', key, value: typeof settings[key] === 'object' ? undefined : settings[key] });
       if (key === 'music') {
         audio.setMode(settings.music);
         ambience.setBand(settings.music === 'band' && musicOn);
       }
       if (key === 'keys') ui.setHelp(HELP[player.mode] ?? HELP.walk);
       if (key === 'voice' || key === 'voiceVolume') voice.applySettings();
+      if (key === 'musicVolume') audio.setMusicVolume(settings.musicVolume);
       if (key === 'quality') return settings.tier !== tier ? 'Graphics changes apply after a reload.' : '';
       return '';
     },
@@ -285,7 +440,9 @@ async function init() {
     boards: () => net.boards,
     wishes: () => net.wishes,
     online: () => net.online,
+    roomLabel: () => (net.connected ? roomLabel : ''),
     onAction(action) {
+      if (started) track('activity', { what: action, zone, mode: player.mode });
       switch (action) {
         case 'rocket':
           fireworks.launchRocket();
@@ -331,11 +488,13 @@ async function init() {
       if (boat.state !== 'docked') boat.abort();
       if (ramayan.seated) ramayan.standUp();
       train.abort();
-      columbus.abort();
-      kuan.abort();
       if (player.mode === 'ride') rides.getOff();
       if (player.mode === 'busy' || player.mode === 'anim') return;
+      track('activity', { what: 'place', place: id });
       player.teleport(...PLACES[id]);
+      frameMelaScreen();
+      if (TOUCH && id === 'ramleela' && rlBoard.mesh) frameSign(rlBoard.mesh.localToWorld(new THREE.Vector3(0, rlBoard.mesh.geometry.parameters.height / 2, 0)));
+      if (TOUCH && id === 'tambola' && tambola.sign) frameSign(tambola.sign.localToWorld(new THREE.Vector3(0, tambola.sign.geometry.parameters.height / 2, 0)));
     },
     onMute() {
       muted = !muted;
@@ -355,18 +514,23 @@ async function init() {
     },
   };
   const ui = createUI(handlers);
+  // a creator's mela gets the Share pill (not trailer captures); the trailer's sound hushes the mela's
+  const share = director ? null : createShare({ cfg, ui, onTrailerSound: (on) => audio.setMuted(on || muted) });
   ui.setMusic(musicOn);
   const passport = new Passport(ui, audio);
   Object.assign(ctx, { ui, passport });
   const net = new Net(ctx);
   ctx.net = net;
+  if (!net.enabled) document.querySelector('#micBtn')?.classList.add('hidden'); // single-player page: nobody to talk to
   const voice = new Voice(ctx, net);
   ctx.voice = voice;
   voice.on('state', () => ui.setMic(voice.live, false));
   voice.on('level', (talking) => ui.setMic(voice.live, talking));
   net.on('boards', () => ui.refreshBoards());
   net.on('wishes', () => ui.refreshBoards());
-  net.on('online', (n) => ui.setChip('online', n > 1 ? `👥 ${n} at the mela` : ''));
+  // multiplayer is per creator: the chip names whose mela this is ("Rahul’s mela · 3 here")
+  const roomLabel = net.room ? `${cfg?.first || cfg?.name || net.room}’s mela` : '';
+  net.on('online', (n) => ui.setChip('online', net.connected && roomLabel ? `👥 ${roomLabel} · ${n > 1 ? `${n} here` : 'just you'}` : ''));
   net.on('status', (ok) => {
     if (!ok) ui.setChip('online', '');
   });
@@ -384,24 +548,141 @@ async function init() {
   const ramayan = new Ramayan(ctx);
   ctx.ramayan = ramayan;
   const boat = new BoatRide(ctx, { wish: () => rituals.wishLantern() });
+  net.makeBoat = () => boat.remoteHull(); // other visitors at the oars get a boat under them
   const decor = buildDecor(ctx);
   await loading();
   const vehicles = new Vehicles(ctx);
+  net.makeVehicle = (key) => vehicles.remoteModel(key); // draw other visitors' cars, helis and planes around them
+  net.ownVehicle = () => vehicles.active;
   const poster = new Poster(ctx);
   const extraLights = new StringLights(scene);
-  const creators = new Creators(ctx, extraLights);
   const walls = new Walls(ctx);
   ctx.walls = walls;
   walls.claimFrom(shops.placed);
   const train = new Train(ctx, extraLights);
-  const columbus = new Columbus(ctx, extraLights);
+  // seated in a vehicle or on a ride: tell the others which one (vehicles: and its tilt; rides: which
+  // seat, since every visitor's wheel, carousel and train run on their own clock), and seat theirs here
+  net.vehicleCode = (e) => vehicles.netCode(e) ?? rides.netCode() ?? (train.riding && player.char.root.parent === train.seat ? 't' : null);
+  const trainSeat = { obj: train.seat, local: new THREE.Vector3() };
+  net.rideSeat = (code) => (code === 't' ? trainSeat : rides.remoteSeat(code));
   const ravan = new Ravan(ctx);
-  const tambola = new Tambola(ctx, extraLights);
-  const kuan = new Kuan(ctx, extraLights);
+  const tambola = new Tambola(ctx, extraLights, { low });
   const scenes = low ? null : new CrowdScenes(ctx);
   extraLights.build();
+  const ownStall = cfg && world.stalls[stallIndexFor(cfg.stallNo, world.stalls.length)];
+  const creator = applyCreator(scene, cfg, { stallAnchor: ownStall, ravanAnchor: { pos: new THREE.Vector3(-46.6, 0, 76.5), facing: 0.22 }, colliders: world.colliders, diyas: world.diyas });
+  // the board over the Ramleela screen: "<Name> presents · Ramleela" (the plain mela: Topmate's)
+  const rlBoard = ramleelaBoard(scene, cfg, { ...ramayan.stage, colliders: world.colliders });
+  creator.ready = Promise.all([creator.ready, rlBoard.ready]);
+  // the creator's own stall shows their board, so its menu takes the board's name too (not the slot's)
+  if (ownStall?.def) ownStall.def.name = cfg.stallTitle || `${cfg.name} ka Stall`;
+  personaliseIntro(cfg);
+  // the Mela Screen over the entrance: the creator's reels / posts, or the festive default loop
+  const billboard = new Billboard({ scene, cfg, colliders: world.colliders, director: !!director });
+  billboard.camera = camera;
+  billboard.renderer = renderer;
+  billboard.onOverlay = (open) => (input.blocked = open); // the full-screen reel: no walking behind it
+  /**
+   * At the gate, facing in, the Mela Screen is the first thing to see. On a phone in portrait the
+   * top HUD (buttons + places strip) covers the upper part of the view, so the default camera pitch
+   * leaves the screen behind it (iPhone SE: all of it). Lower the pitch (the camera drops and looks
+   * up the walkway) just enough that the picture clears the HUD, never below -0.08 (lower, the gate
+   * arch's banner comes down over the screen). Where it already clears (desktop), nothing changes.
+   */
+  const _top = new THREE.Vector3();
+  const _tgt = new THREE.Vector3();
+  /** True when the local nametag projects onto the Ramleela board (seen from the benches). */
+  const _ntp = new THREE.Vector3();
+  const _bb = new THREE.Box3();
+  const _bc = new THREE.Vector3();
+  function tagOverBoard() {
+    const bm = rlBoard.mesh;
+    const sp = nameTag.sprite;
+    if (!bm || !sp || Math.abs(player.pos.x - bm.parent.position.x) > 25 || Math.abs(player.pos.z - bm.parent.position.z) > 40) return false;
+    if (!bm.geometry.boundingBox) bm.geometry.computeBoundingBox();
+    _bb.copy(bm.geometry.boundingBox).applyMatrix4(bm.matrixWorld);
+    let x0 = 2, x1 = -2, y0 = 2, y1 = -2;
+    for (let i = 0; i < 8; i++) {
+      _bc.set(i & 1 ? _bb.max.x : _bb.min.x, i & 2 ? _bb.max.y : _bb.min.y, i & 4 ? _bb.max.z : _bb.min.z).project(camera);
+      if (_bc.z > 1) return false; // behind the camera
+      x0 = Math.min(x0, _bc.x), x1 = Math.max(x1, _bc.x), y0 = Math.min(y0, _bc.y), y1 = Math.max(y1, _bc.y);
+    }
+    sp.getWorldPosition(_ntp).project(camera);
+    return _ntp.z < 1 && _ntp.x > x0 - 0.15 && _ntp.x < x1 + 0.15 && _ntp.y > y0 - 0.06 && _ntp.y < y1 + 0.06;
+  }
+
+  /**
+   * Phones: tilts the follow camera up (lower pitch) until a sign's top edge `top` clears the top
+   * HUD, the way frameMelaScreen does for the Mela Screen. Used by the place chips that land in front
+   * of a sign (the Ramleela board, the Tambola Tent), and backs the camera off a little if tilting
+   * alone can't do it. Desktop (where it already clears) is left alone.
+   */
+  function frameSign(top) {
+    if (!top || player.mode !== 'walk') return;
+    // the top HUD, the places bar and the chips under it (the Ravan countdown)
+    const rects = ['hud-top', 'places', 'chips']
+      .map((id) => document.getElementById(id))
+      .filter((e) => e && getComputedStyle(e).display !== 'none')
+      .map((e) => e.getBoundingClientRect())
+      .filter((r) => r.height > 0);
+    const cr = renderer.domElement.getBoundingClientRect();
+    if (!rects.length || !cr.height) return;
+    const want = Math.max(...rects.map((r) => r.bottom)) - cr.top + cr.height * 0.03;
+    const c = player.cam;
+    const pos = camera.position.clone();
+    const quat = camera.quaternion.clone();
+    _tgt.set(player.pos.x, player.pos.y + 1.55 * (player.char.look.scale ?? 1), player.pos.z);
+    const clears = () => ((1 - top.clone().project(camera).y) / 2) * cr.height >= want;
+    const place = (p, d) => {
+      camera.position.set(Math.sin(c.yaw) * Math.cos(p), Math.sin(p), Math.cos(c.yaw) * Math.cos(p)).multiplyScalar(d).add(_tgt);
+      camera.lookAt(_tgt);
+      camera.updateMatrixWorld();
+    };
+    let done = false;
+    for (let d = c.dist; d <= c.dist + 4 && !done; d += 1) {
+      for (let p = c.pitch; p >= -0.3; p -= 0.02) {
+        place(p, d);
+        if (clears()) {
+          c.pitch = p;
+          c.dist = c.targetDist = d;
+          done = true;
+          break;
+        }
+      }
+    }
+    camera.position.copy(pos);
+    camera.quaternion.copy(quat);
+    camera.updateMatrixWorld();
+  }
+
+  function frameMelaScreen() {
+    const s = billboard.size;
+    const dz = player.pos.z - billboard.pos.z;
+    if (!s || player.mode !== 'walk' || dz < 8 || dz > 35 || Math.abs(player.pos.x - billboard.pos.x) > 6) return;
+    if (Math.cos(player.heading - Math.PI) < 0.8) return; // not facing into the mela
+    const hudEl = document.getElementById('hud-top');
+    const hr = hudEl && getComputedStyle(hudEl).display !== 'none' ? hudEl.getBoundingClientRect() : null;
+    const cr = renderer.domElement.getBoundingClientRect();
+    if (!hr || hr.height <= 0 || !cr.height) return;
+    const want = hr.bottom - cr.top + cr.height * 0.03;
+    const c = player.cam;
+    const pos = camera.position.clone();
+    const quat = camera.quaternion.clone();
+    _tgt.set(player.pos.x, player.pos.y + 1.55 * (player.char.look.scale ?? 1), player.pos.z);
+    _top.set(billboard.pos.x, s.y1, billboard.pos.z); // the picture's top edge (its header may stay under the HUD)
+    for (let p = c.pitch; p >= -0.08; p -= 0.02) {
+      camera.position.set(Math.sin(c.yaw) * Math.cos(p), Math.sin(p), Math.cos(c.yaw) * Math.cos(p)).multiplyScalar(c.dist).add(_tgt);
+      camera.lookAt(_tgt);
+      camera.updateMatrixWorld();
+      c.pitch = p;
+      if (((1 - _top.clone().project(camera).y) / 2) * cr.height >= want) break;
+    }
+    camera.position.copy(pos);
+    camera.quaternion.copy(quat);
+    camera.updateMatrixWorld();
+  }
   await loading();
-  const dayNight = new DayNight({ scene, sky, hemi, sun, lightSystems: [world.lights, games.lights, vehicles.lights, poster.lights, ramayan.lights, extraLights].filter(Boolean) });
+  const dayNight = new DayNight({ scene, sky, hemi, sun, lightSystems: [world.lights, games.lights, vehicles.lights, poster.lights, ramayan.lights, extraLights, billboard.lights].filter(Boolean) });
   const customizer = new Customizer({
     onApply: (lk) => {
       player.char.setLook(lk);
@@ -418,7 +699,6 @@ async function init() {
   });
   ctx.customizer = customizer;
   void food;
-  void creators;
 
   // smoke follows the crackers
   fireworks.onBurst = (p) => smoke.puff(p.x, p.y, p.z, { kind: 'smoke', count: low ? 3 : 8, size: 3, grow: 2.2, rise: 0.3, drift: 0.6, life: 7, peak: 0.1, spread: 1.5 });
@@ -435,33 +715,97 @@ async function init() {
   lanterns.releaseFrom = (p, text) => {
     const r = releaseFrom(p, text);
     net.sendLantern(text, r.pos, r.dir);
+    track('lantern', { len: String(text).length, boat: boat.riding, zone }); // the wish itself goes through realtime
     return r;
   };
   // buffs show as chips
   player.onBuff = (id, b) => ui.setChip(`buff-${id}`, b ? `${b.icon} ${b.label} · ${Math.ceil(b.left)}s` : '');
 
-  // Phones (and any GPU with few shader uniforms) get a small pool of real lights that follows the
-  // player; otherwise the lit shader fails to compile there and every lit object disappears.
+  // Every tier lights the scene through a small pool of real lights that follows the player: phones
+  // can't compile a shader for ~60 lights at all, and on desktops it was the biggest per-pixel cost.
   const maxFrag = renderer.getContext().getParameter(renderer.getContext().MAX_FRAGMENT_UNIFORM_VECTORS);
-  const poolSize = low ? { points: 8, spots: 2 } : maxFrag < 700 ? { points: 14, spots: 3 } : null;
-  const lightPool = poolSize ? new LightPool(scene, () => player.pos, poolSize) : null;
+  const poolSize = low ? { points: 8, spots: 2 } : maxFrag < 700 ? { points: 14, spots: 3 } : { points: 16, spots: 4 };
+  const lightPool = new LightPool(scene, () => player.pos, poolSize);
 
   // shadows: everything built so far casts and receives (bulbs and glow meshes excluded)
   if (!low) {
     shadowify(scene);
     world.water.mesh.castShadow = world.water.mesh.receiveShadow = false;
+    debris.mesh.castShadow = false; // small flying bits: invisible at the shadow map's 9 cm texel
+    // the shadow map is redrawn on a cadence (see the loop) instead of on every render call
+    renderer.shadowMap.autoUpdate = false;
+    renderer.shadowMap.needsUpdate = true;
   }
 
+  let viewW = 0;
+  let viewH = 0;
   function resize() {
-    camera.aspect = innerWidth / innerHeight;
+    const w = viewW0();
+    const h = viewH0();
+    const pr = renderer.getPixelRatio();
+    viewW = w;
+    viewH = h;
+    camera.aspect = w / h;
     camera.updateProjectionMatrix();
-    renderer.setSize(innerWidth, innerHeight);
-    composer.setSize(innerWidth, innerHeight);
-    fireworks.setViewportHeight(innerHeight * renderer.getPixelRatio());
-    smoke.setViewportHeight(innerHeight * renderer.getPixelRatio(), camera.fov);
+    renderer.setSize(w, h);
+    composer.setPixelRatio(pr);
+    composer.setSize(w, h);
+    // bloom is a blur: phones run it at 1x whatever the pixel ratio (composer.setSize just reset it).
+    // Not lower: below 1x the 2-4 px diya flames average away in the first mip and lose their halo.
+    if (low) bloom.setSize(w, h);
+    fireworks.setViewportHeight(h * pr);
+    smoke.setViewportHeight(h * pr, camera.fov);
     ramayan.resize();
   }
-  addEventListener('resize', resize);
+  /** Runs fn (a render + grab) at a pixel ratio of at least minPr, then puts the governor's back. */
+  ctx.atLeastPixelRatio = (minPr, fn) => {
+    const pr = renderer.getPixelRatio();
+    if (pr >= minPr) return fn();
+    renderer.setPixelRatio(minPr);
+    resize();
+    try {
+      return fn();
+    } finally {
+      renderer.setPixelRatio(pr);
+      resize();
+      composer.render(); // the resize cleared the canvas: never leave it blank until the next frame
+    }
+  };
+  let pendingPr = 0; // see the governor's apply()
+  const governor = new ResolutionGovernor({
+    levels,
+    start: renderer.getPixelRatio(),
+    enabled: !pinnedPr && params.get('gov') !== '0',
+    // The governor steps after a frame's render (it samples that frame's time). Resizing the canvas
+    // there would clear its drawing buffer (alpha, no preserveDrawingBuffer) and the browser would
+    // composite that blank buffer: a one-frame transparent flash. So the new ratio waits for the next
+    // frame that draws and is applied just before its render, in the same task.
+    apply(pr) {
+      pendingPr = pr;
+    },
+  });
+  const applyPendingPr = () => {
+    if (!pendingPr) return;
+    const pr = pendingPr;
+    pendingPr = 0;
+    if (pr === renderer.getPixelRatio()) return;
+    renderer.setPixelRatio(pr);
+    resize();
+  };
+  // phones: rotating, the URL bar sliding and the on-screen keyboard all resize; some browsers report
+  // the new size a moment late, so check again shortly after
+  let resizeTimer = 0;
+  const onResize = () => {
+    if (!director && (innerWidth !== viewW || innerHeight !== viewH)) {
+      resize();
+      governor.reset();
+    }
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => !director && (innerWidth !== viewW || innerHeight !== viewH) && (resize(), governor.reset()), 300);
+  };
+  addEventListener('resize', onResize);
+  addEventListener('orientationchange', onResize);
+  window.visualViewport?.addEventListener('resize', onResize);
   resize();
 
   // where you left off last time
@@ -471,7 +815,9 @@ async function init() {
   } catch {
     // ignore
   }
-  if (savedPos && !params.has('place') && !params.has('pos') && vehicles.walkable(savedPos)) player.teleport(savedPos.x, savedPos.z, savedPos.h);
+  const atStall = creator.stallBoard && world.stalls[stallIndexFor(cfg.stallNo, world.stalls.length)];
+  if (atStall && !params.has('place') && !params.has('pos')) player.teleport(0, atStall.center.z + 5, face(0, atStall.center.z + 5, atStall.center.x, atStall.center.z)); // facing their stall
+  else if (savedPos && !params.has('place') && !params.has('pos') && vehicles.walkable(savedPos)) player.teleport(savedPos.x, savedPos.z, savedPos.h);
   setInterval(() => {
     if (started && player.mode === 'walk') {
       try {
@@ -487,19 +833,53 @@ async function init() {
   // show, &warp=10 pre-simulates fireworks, &noyt skips the YouTube embed, &night skips dusk,
   // &nonet stays offline, &tier=low forces the phone tier, &script=E@1.5,Digit1@2.5 replays input
   await loading('Opening the gates…');
+  // compile every shader (in parallel where the browser can) and draw one frame while the loader is
+  // still up, so the first seconds of play don't stall on ~40-70 synchronous shader compiles
+  // Program variants depend on the render target (a null target means tone mapping + sRGB output in
+  // the shader), and the scene is only ever drawn into the composer's target, so compile against it.
+  lightPool.update();
+  try {
+    renderer.setRenderTarget(composer.readBuffer);
+    const compiled = renderer.compileAsync(scene, camera); // programs are created synchronously here
+    renderer.setRenderTarget(null);
+    await Promise.race([compiled, new Promise((r) => setTimeout(r, 8000))]);
+  } catch {
+    // older browsers: the warm-up render below still compiles what's in view
+    renderer.setRenderTarget(null);
+  }
+  composer.render();
+  await nextFrame();
   document.getElementById('loader').classList.add('done');
+  {
+    const utm = {};
+    for (const [k, v] of params) if (/^utm_/.test(k)) utm[k] = v.slice(0, 100);
+    const nav = navigator;
+    track('session_start', {
+      load_ms: sinceLoad(), tier, gpu: String(settings.gpu || '').slice(0, 120), midGpu: settings.midGpu, touch: TOUCH,
+      w: innerWidth, h: innerHeight, dpr, pr: renderer.getPixelRatio(), mem: nav.deviceMemory, cores: nav.hardwareConcurrency, lang: nav.language,
+      ref: document.referrer.slice(0, 300), utm, invite: profile.ref || '', returning: !!profile.name, name: profile.name || '', handle: profile.handle || '',
+      play: params.has('play'), creator: cfg?.name || '', standalone: matchMedia('(display-mode: standalone)').matches,
+    });
+  }
   setTimeout(() => document.getElementById('loader').classList.add('hidden'), 500);
   if (params.has('play')) {
     customizer.close();
     profile.name = params.get('name') || profile.name || 'Mela Visitor';
     if (params.has('handle')) profile.handle = params.get('handle');
-    started = true;
+    started = !director; // director shots: no prompts, markers or keeper bubbles
     nameTag.set({ name: profile.name, handle: profile.handle });
     dayNight.start({ night: params.has('night') });
+    // &dayT=30 holds the evening at that many seconds after dusk (screenshots, the bench's --dusk)
+    if (params.get('dayT')) {
+      dayNight.T = Number(params.get('dayT')) || 0;
+      dayNight.running = false;
+    }
     ravan.start();
     if (!params.has('noyt')) ramayan.start();
     if (!params.has('nonet')) net.connect();
-    window.__mela = { ...ctx, games, rides, crowd, vehicles, ramayan, poster, customizer, nameTag, boat, train, columbus, ravan, tambola, kuan, walls, dayNight, scenes, decor, voice, lightPool }; // for automated checks
+    if (!director) ui.showCoach();
+    share?.entered();
+    window.__mela = { share, ...ctx, creator, mela: melaReport(), billboard, games, rides, crowd, vehicles, ramayan, poster, customizer, nameTag, boat, train, ravan, tambola, walls, dayNight, scenes, decor, voice, lightPool, governor, get gov() { return { ...governor.state, gpu: settings.gpu, midGpu: settings.midGpu }; } }; // for automated checks
   } else {
     customizer.open('intro');
   }
@@ -508,6 +888,7 @@ async function init() {
   for (const a of (params.get('do') || '').split(',').filter(Boolean)) handlers.onAction(a);
   for (let i = 0; i < (Number(params.get('warp')) || 0) * 60; i++) fireworks.update(1 / 60);
   if (params.get('pos')) player.teleport(...params.get('pos').split(',').map(Number));
+  if (started) frameMelaScreen(); // the gate spawn on a phone: the Mela Screen clear of the top HUD
   for (const stepDef of (params.get('script') || '').split(',').filter(Boolean)) {
     const [what, at] = stepDef.split('@');
     setTimeout(() => {
@@ -534,7 +915,7 @@ async function init() {
         waved.add(s);
         s.keeper.setAction('wave');
         setTimeout(() => s.keeper.action === 'wave' && s.keeper.clearAction(), 1600);
-        ui.bubble((o) => s.keeper.headTop.getWorldPosition(o), ['Aaiye, aaiye! 🙏', 'Happy Diwali! ✨', 'Fresh hai, le lo! 😄'][Math.floor(Math.random() * 3)], 1.8);
+        ui.bubble((o) => s.keeper.headTop.getWorldPosition(o), slot(`shout.keeper.${1 + Math.floor(Math.random() * 3)}`), 1.8);
       } else if (d > 9) {
         waved.delete(s);
       }
@@ -545,24 +926,41 @@ async function init() {
 
   const timer = new THREE.Timer();
   timer.connect(document);
-  let zone = null;
+  let zoneAt = 0;
+  let atWall = false;
+  const zonesSeen = new Set();
   let zoneTimer = 0;
+  let ride = null; // what we are riding now (for ride_start / ride_end)
+  let rideAt = 0;
+  let rides_n = 0;
+  const rideName = () => (tambola.active || ramayan.seated ? null : vehicles.active ? vehicles.active.kind : boat.riding ? 'boat' : train.riding ? 'train' : rides.active);
   let helpKey = '';
+  let tagBase = false;
   let vehKind = null;
+  const joyLabel = document.querySelector('#joystick .joy-label');
+  const jumpBtn = document.getElementById('jumpBtn');
 
-  renderer.setAnimationLoop((time) => {
-    timer.update(time);
-    const dt = Math.min(timer.getDelta(), 0.05);
-    const t = timer.getElapsed();
+  // behind the intro card and other full-screen panels the scene is only a blurred backdrop, so it is
+  // drawn at a few frames a second (or every 3rd frame) while the simulation keeps running
+  const introEl = document.getElementById('intro');
+  let frameNo = 0;
+  let lastDraw = 0;
+  let lastTime = 0;
+  let throttled = false;
+  let sinceShadow = 0;
 
+  // the director takes the camera (and the clock) for frame-stepped capture
+  let cameraHook = null;
+
+  /** One simulation step and (unless render is false) one draw. `time` is the rAF timestamp. */
+  function frame(dt, t, { time = performance.now(), render = true } = {}) {
+    frameNo++;
     tasks.update(dt);
     games.update(dt, t);
     rides.update(dt, t);
     vehicles.update(dt, t);
     boat.update(dt, t);
     train.update(dt, t);
-    columbus.update(dt, t);
-    kuan.update(dt, t);
     ramayan.update(dt, t, { started, muted });
     player.update(dt);
     world.update(dt, t);
@@ -571,40 +969,62 @@ async function init() {
     scenes?.update(dt, t);
     shops.update(dt, t);
     poster.update(t);
-    tambola.update(dt);
     ravan.update(dt, t);
+    tambola.update(dt);
     decor.update(dt, t);
+    creator.update(dt, t);
     updateFlames(t);
     dayNight.update(dt);
-    lightPool?.update();
 
-    if (games.active) games.applyCamera(camera, dt);
+    if (cameraHook) cameraHook(camera, dt, t);
+    else if (games.active) games.applyCamera(camera, dt);
     else if (vehicles.active) vehicles.applyCamera(camera, dt);
+    else if (boat.riding) boat.applyCamera(camera, dt);
     else player.updateCamera(dt);
     camera.updateMatrixWorld();
+    // after the camera: it wakes / sleeps by distance, and a tap on the screen opens the reel
+    billboard.update(dt, t, camera.position, started && player.mode === 'walk' && !ui.modalOpen ? input : null);
 
     // prompts and help: whoever owns the seat (vehicle, show, ride) supplies them
     const mode = games.active ? 'game' : player.mode;
-    const owner = vehicles.active ? vehicles : ramayan.seated ? ramayan : boat.riding ? boat : train.riding ? train : columbus.state === 'ride' || columbus.state === 'stopping' ? columbus : kuan.watching ? kuan : null;
+    const owner = vehicles.active ? vehicles : ramayan.seated ? ramayan : boat.riding ? boat : train.riding ? train : null;
     const ownerKey = owner === vehicles ? `veh:${vehicles.active.kind}` : owner ? owner.constructor.name : 'ride';
     const key = mode === 'ride' ? ownerKey : mode;
     if (key !== helpKey) {
       helpKey = key;
+      // the stick says what it does now
+      if (TOUCH) joyLabel.textContent = owner === boat ? 'Row' : owner === vehicles ? (vehicles.active.kind === 'car' ? 'Drive' : 'Fly') : 'Walk';
+      if (TOUCH) jumpBtn.classList.toggle('boat-hidden', owner === boat); // nothing to jump in a boat
+      tagBase = mode !== 'game' && !director; // the close game cameras sit right behind the head; director shots have no tag
+      nameTag.setVisible(tagBase && !tagOverBoard());
       ui.setPrompt(null);
       ui.setPrompt2(null);
+      // a ride starts or ends with a change of seat owner: tracked here, not per frame
+      const nowRide = mode === 'ride' ? rideName() ?? null : null;
+      if (nowRide !== ride) {
+        if (ride) track('ride_end', { ride, secs: Math.round((performance.now() - rideAt) / 1000) });
+        if (nowRide) track('ride_start', { ride: nowRide, zone }), rides_n++;
+        ride = nowRide;
+        rideAt = performance.now();
+      }
       if (mode === 'ride') ui.setHelp(owner === vehicles ? vehicles.active.help : owner ? owner.help : HELP.ride);
       else if (mode !== 'game') ui.setHelp(HELP[mode] ?? HELP.walk);
     }
+    // the visitor's own tag never sits over the creator's '<Name> presents · Ramleela' board
+    if (tagBase && (frameNo & 7) === 0) nameTag.setVisible(!tagOverBoard());
     const kind = vehicles.active?.kind ?? null;
     if (kind !== vehKind) {
       vehKind = kind;
       ui.setVehicleButtons(kind);
     }
+    // touch: the stick is there while you can walk, drive or row, and gets out of the way otherwise
+    if (TOUCH) input.setJoystick(started && !ui.modalOpen && (mode === 'walk' || (mode === 'ride' && (owner === vehicles || owner === boat))));
     const canInteract = started && mode === 'walk' && !ui.modalOpen;
     const best = interactions.update(t, player, canInteract);
     if (mode === 'ride') {
-      ui.setPrompt(owner?.promptLabel?.() ?? 'Get off');
-      ui.setPrompt2(owner?.prompt2Label?.() ?? null);
+      // at the Tambola table the panel's own 'Leave the table' is the way out: no ghost 'Get off' behind it
+      ui.setPrompt(tambola.active ? null : owner?.promptLabel?.() ?? 'Get off');
+      ui.setPrompt2(tambola.active ? null : owner?.prompt2Label?.() ?? null);
     }
     if (mode === 'walk') {
       ui.setPrompt(best ? interactions.label(best) : null);
@@ -621,8 +1041,21 @@ async function init() {
       const p = player.pos;
       const z = ZONES.find((zz) => (p.x - zz.x) ** 2 + (p.z - zz.z) ** 2 < zz.r * zz.r);
       if ((z?.id ?? null) !== zone) {
+        if (zone) track('zone', { zone: zone, action: 'leave', secs: Math.round((performance.now() - zoneAt) / 1000) });
         zone = z?.id ?? null;
-        if (z) ui.toast(z.msg, 3200);
+        zoneAt = performance.now();
+        if (z) {
+          ui.toast(zoneToast(z), 3200);
+          zonesSeen.add(z.id);
+          track('zone', { zone: z.id, action: 'enter' });
+        }
+      }
+      // the creator's Wall of Fame (painted posts beside their stall): a look counts once per approach
+      const wc = creator.wall?.center;
+      if (wc) {
+        const near = (p.x - wc.x) ** 2 + (p.z - wc.z) ** 2 < 36;
+        if (near && !atWall) track('wall_post', { action: 'view', posts: creator.postsLoaded ?? 0 });
+        atWall = near;
       }
     }
 
@@ -635,15 +1068,96 @@ async function init() {
     if (started) ambience.update(dt, t, camera.position);
     net.update(dt, performance.now());
     if (started && !ui.modalOpen) {
-      if (settings.voice === 'ptt') voice.setTalking(input.isAction('talk'));
+      if (settings.voice === 'ptt') voice.setTalking(input.isAction('talk') || ui.micHeld);
       else if (input.pressedAction('talk')) voice.toggle();
     }
     voice.update(dt, camera);
     ui.updateBubbles(camera);
 
-    composer.render();
-    ramayan.render(camera);
+    const intro = !introEl.classList.contains('hidden');
+    const covered = intro || (ui.modalOpen && !tambola.panelOpen); // the Tambola ticket is a light overlay: the tent stays live behind it
+    const draw = render && (!covered || (intro ? time - lastDraw > 140 : frameNo % 3 === 0));
+    if (covered !== throttled) {
+      throttled = covered;
+      governor.reset(); // frame times behind a panel say nothing about the full scene
+    }
+    if (draw) {
+      lastDraw = time;
+      // shadows: every frame while the sun is still sliding into night, then every 2nd frame
+      // (rides and people move slowly enough that a 30 Hz shadow is not noticeable). When the river
+      // reflection is also on a 2-frame cadence, the shadow takes the frames it skips, so the two
+      // heavy passes never land in the same frame.
+      if (renderer.shadowMap.enabled) {
+        sinceShadow++;
+        if (dayNight.T < 95 || sinceShadow >= 2 || !world.water.reflectDue(camera)) {
+          renderer.shadowMap.needsUpdate = true;
+          sinceShadow = 0;
+        }
+      }
+      applyPendingPr(); // a governor step from the last frame: resize and redraw in this one
+      lightPool.update();
+      composer.render();
+      ramayan.render(camera);
+    }
     input.endFrame();
+    return covered;
+  }
+
+  const loop = (time) => {
+    const t0 = performance.now();
+    const rafDt = lastTime ? time - lastTime : 0;
+    lastTime = time;
+    timer.update(time);
+    const covered = frame(Math.min(timer.getDelta(), 0.05), timer.getElapsed(), { time });
+    if (!covered) governor.sample(rafDt, performance.now() - t0);
+  };
+  if (director) {
+    nameTag.setVisible(false);
+    startDirector(director, { ...window.__mela, frame, setCameraHook: (fn) => (cameraHook = fn) });
+    return;
+  }
+  renderer.setAnimationLoop(loop);
+
+  // analytics: frame rate from the frame counter every 5 s (no per-frame work), a heartbeat every 30 s
+  const fps = { lt20: 0, lt30: 0, lt45: 0, lt55: 0, ok: 0 };
+  let fpsFrame = frameNo;
+  let fpsAt = performance.now();
+  let visibleMs = 0;
+  let lastBeat = performance.now();
+  setInterval(() => {
+    const now = performance.now();
+    if (!document.hidden && !throttled) {
+      const f = ((frameNo - fpsFrame) * 1000) / (now - fpsAt);
+      fps[f < 20 ? 'lt20' : f < 30 ? 'lt30' : f < 45 ? 'lt45' : f < 55 ? 'lt55' : 'ok']++;
+    }
+    fpsFrame = frameNo;
+    fpsAt = now;
+  }, 5000);
+  const beat = (extra) => {
+    const now = performance.now();
+    visibleMs += now - lastBeat; // only called while visible (or on the way to hidden)
+    lastBeat = now;
+    track('heartbeat', { started, mode: games.active ? 'game' : player.mode, zone, ride, online: net.online, connected: net.connected, pr: renderer.getPixelRatio(), gov_ms: governor.last.mean, fps: { ...fps }, active_s: Math.round(visibleMs / 1000), ...extra });
+    for (const k in fps) fps[k] = 0;
+  };
+  setInterval(() => !document.hidden && beat(), 30000);
+  onTrackHide(() => beat({ hidden: true }));
+  document.addEventListener('visibilitychange', () => !document.hidden && (lastBeat = performance.now()));
+  onTrackEnd(() => {
+    if (ride) track('ride_end', { ride, secs: Math.round((performance.now() - rideAt) / 1000) });
+    const tail = document.hidden ? 0 : performance.now() - lastBeat;
+    track('session_end', { duration_ms: sinceLoad(), active_s: Math.round((visibleMs + tail) / 1000), started, zones: [...zonesSeen], rides: rides_n, stamps: passport.done.size });
+  });
+
+  // a hidden tab draws nothing at all (some browsers keep firing rAF for a while)
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      renderer.setAnimationLoop(null);
+    } else {
+      lastTime = 0;
+      governor.reset();
+      renderer.setAnimationLoop(loop);
+    }
   });
 }
 

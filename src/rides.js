@@ -1,7 +1,9 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { shape, merged } from './character.js';
 import { canvasTexture, setLayer, DAY } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
 import { SITES } from './world.js';
 
 const TWO_PI = Math.PI * 2;
@@ -143,7 +145,7 @@ export class Carousel {
     // a sign out front
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(3, 0.85),
-      new THREE.MeshBasicMaterial({ map: signTexture('Carousel', 'Press E to ride', '#6a0d2b'), color: new THREE.Color(1.2, 1.2, 1.2) })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('ride.carousel.sign'), tk('Press E to ride', 'Tap the button to ride', 'Round and round we go'), '#6a0d2b'), color: new THREE.Color(1, 1, 1) })
     );
     sign.position.set(7.6, 2.2, 2.6);
     sign.rotation.y = Math.PI / 2;
@@ -226,7 +228,7 @@ export class Rides {
     player.cam.pitch = 0.15;
     player.cam.targetDist = 3.5;
     this.active = 'wheel';
-    ui.toast('🎡 Enjoy the view! Press E to get off.');
+    ui.toast(`${slot('toast.wheel.on')} ${tk('Press E to get off.', 'Tap “Get off” when you are done.')}`);
     passport.stamp('wheel');
   }
 
@@ -237,7 +239,7 @@ export class Rides {
     player.cam.targetDist = 4;
     this.active = 'carousel';
     this.rideTime = 0;
-    ui.toast('🎠 Wheee! Press E to get off.');
+    ui.toast(`${slot('toast.carousel.on')} ${tk('Press E to get off.', 'Tap “Get off” when you are done.')}`);
     passport.stamp('carousel');
   }
 
@@ -255,6 +257,36 @@ export class Rides {
     this.active = null;
   }
 
+  // ---------- other visitors on the rides (see net.js) ----------
+
+  /**
+   * The ride code net.js sends while we sit on the wheel or the carousel: 'w' + gondola index or
+   * 'k' + animal index. Each visitor's wheel and carousel turn on their own clock, so a receiver
+   * seats the rider in its own gondola or on its own animal instead of at our world position.
+   */
+  netCode() {
+    const seat = this.ctx.player.char.root.parent;
+    if (this.active === 'wheel') {
+      const i = this.wheel.gondolas.indexOf(seat);
+      return i >= 0 ? `w${i}` : null;
+    }
+    if (this.active === 'carousel') {
+      const a = this.carousel.animals;
+      for (let i = 0; i < a.length; i++) if (a[i].seat === seat) return `k${i}`;
+    }
+    return null;
+  }
+
+  /** Where a remote rider with that code sits here: { obj, local } (made once per seat), or null. */
+  remoteSeat(code) {
+    const cache = (this.remoteSeats ??= {});
+    if (code in cache) return cache[code];
+    const i = +code.slice(1);
+    const obj = code[0] === 'w' ? this.wheel.gondolas[i] : code[0] === 'k' ? this.carousel.animals[i]?.seat : null;
+    // the same offsets boardWheel() and boardCarousel() seat us at
+    return (cache[code] = obj ? { obj, local: code[0] === 'w' ? new THREE.Vector3(0, -2.09, -0.4) : new THREE.Vector3(0, -0.5, 0) } : null);
+  }
+
   update(dt, t) {
     this.carousel.update(dt, t);
     if (!this.active) return;
@@ -263,13 +295,13 @@ export class Rides {
       this.rideTime += dt;
       if (this.rideTime > 45) {
         this.getOff();
-        ui.toast('That was fun! 🎠');
+        ui.toast(slot('toast.carousel.off'));
         return;
       }
     }
     if (this.active === 'wheel' && this.wheel.ride?.done) {
       this.getOff();
-      ui.toast('Hope you enjoyed the view! 🎡');
+      ui.toast(slot('toast.wheel.off'));
       return;
     }
     if (input.pressedAction('interact')) {

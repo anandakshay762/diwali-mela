@@ -1317,6 +1317,7 @@ button.icon.off {
   touch-action: none;
 }
 
+body.touch #jumpBtn.boat-hidden,
 body.touch #jumpBtn.veh-hidden {
   display: none !important;
 }
@@ -1548,171 +1549,9 @@ button.ghost.tiny {
   font-size: 12px;
 }
 
-/* ---------- creator card ---------- */
-
-.modal-card.creator {
-  width: min(420px, 100%);
-}
-
-.cc-photo {
-  width: 120px;
-  height: 120px;
-  margin: 0 auto 12px;
-  overflow: hidden;
-  border: 3px solid var(--gold);
-  border-radius: 50%;
-  background: #ff8a1c;
-}
-
-.cc-photo img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.cc-initial {
-  display: grid;
-  place-items: center;
-  width: 100%;
-  height: 100%;
-  color: #fff;
-  font: 700 56px 'Poppins', sans-serif;
-}
-
-.cc-handle {
-  margin: -6px 0 6px;
-  color: var(--gold);
-  font-weight: 600;
-}
-
-/* ---------- tambola ---------- */
-
-.overlay.light {
-  background: rgba(6, 2, 12, 0.35);
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
-  place-items: end center;
-  padding-bottom: 110px;
-}
-
-.tambola-card {
-  width: min(560px, 100%);
-}
-
-.tb-head {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
-}
-
-.tb-current {
-  font: 700 56px 'Poppins', sans-serif;
-  line-height: 1;
-  color: var(--gold);
-}
-
-.tb-call {
-  color: var(--muted);
-  font-size: 14px;
-}
-
-.tb-side {
-  text-align: right;
-}
-
-.tb-count {
-  color: var(--muted);
-  font-size: 12px;
-}
-
-.tb-recent {
-  display: flex;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-top: 4px;
-}
-
-.tb-recent span {
-  min-width: 26px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  background: rgba(255, 255, 255, 0.1);
-  font-size: 12px;
-  text-align: center;
-}
-
-.tb-recent span:first-child {
-  background: var(--gold);
-  color: #2a0c00;
-  font-weight: 700;
-}
-
-.ticket {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  gap: 4px;
-  padding: 8px;
-  border-radius: 12px;
-  background: #fff6e5;
-}
-
-.ticket .cell {
-  aspect-ratio: 1.1;
-  display: grid;
-  place-items: center;
-  border-radius: 6px;
-  background: #fff;
-  color: #2a0c00;
-  font: 600 15px 'Poppins', sans-serif;
-}
-
-.ticket .cell.blank {
-  background: #f1e2c4;
-}
-
-.ticket .cell.marked {
-  background: #ff8a1c;
-  color: #fff;
-  text-decoration: line-through;
-}
-
-.tb-prizes {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 10px 0 4px;
-}
-
-.tb-prizes .prize {
-  padding: 4px 10px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  border-radius: 999px;
-  font-size: 12px;
-}
-
-.tb-prizes .prize.mine {
-  border-color: var(--gold);
-  background: rgba(255, 207, 92, 0.25);
-}
-
-.tb-prizes .prize.gone {
-  opacity: 0.5;
-  text-decoration: line-through;
-}
-
 @media (max-width: 760px) {
   #chips {
     top: 108px;
-  }
-
-  .overlay.light {
-    padding-bottom: 140px;
-  }
-
-  .ticket .cell {
-    font-size: 12px;
   }
 }
 
@@ -1750,5 +1589,1567 @@ button.icon.talking {
     flex-wrap: wrap;
     justify-content: center;
     width: calc(100% - 32px);
+  }
+}
+
+/* ---------- phones: flat panels, safe areas, touch ---------- */
+
+/* backdrop-filter re-blurs the moving canvas under every panel, every frame. Phones and the low
+   tier get flat, more opaque panels instead. */
+body.low,
+body.touch {
+  --panel: rgba(30, 12, 42, 0.86);
+}
+
+body.low *,
+body.touch * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.low .overlay,
+body.touch .overlay {
+  background: radial-gradient(ellipse at center, rgba(34, 10, 38, 0.72), rgba(6, 2, 12, 0.93));
+}
+
+body.low .overlay.light,
+body.touch .overlay.light {
+  background: rgba(6, 2, 12, 0.35);
+}
+
+body.low .cust-card,
+body.touch .cust-card {
+  background: rgba(24, 8, 36, 0.95);
+}
+
+body.low .prompt,
+body.touch .prompt {
+  background: rgba(30, 12, 42, 0.9);
+}
+
+/* no rubber-banding, pinch or double-tap zoom, long-press callouts or tap flashes on game controls */
+html,
+body {
+  overscroll-behavior: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body * {
+  touch-action: manipulation;
+}
+
+input,
+textarea,
+select {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+#places,
+#actionbar,
+.cust-card,
+.cust-right,
+.modal-card,
+.stamps,
+.board-body {
+  overscroll-behavior: contain;
+}
+
+/* notches and home indicators (env() is 0 on desktop, so these match the rules above there) */
+#hud-top {
+  top: calc(12px + env(safe-area-inset-top));
+  left: calc(16px + env(safe-area-inset-left));
+  right: calc(16px + env(safe-area-inset-right));
+}
+
+#actionbar {
+  bottom: calc(16px + env(safe-area-inset-bottom));
+}
+
+#prompts {
+  bottom: calc(104px + env(safe-area-inset-bottom));
+}
+
+#jumpBtn,
+#vehicleBtns {
+  right: calc(20px + env(safe-area-inset-right));
+  bottom: calc(110px + env(safe-area-inset-bottom));
+}
+
+#toast,
+#stampToast {
+  top: calc(70px + env(safe-area-inset-top));
+}
+
+#stampToast {
+  right: calc(16px + env(safe-area-inset-right));
+}
+
+#gameHud {
+  top: calc(66px + env(safe-area-inset-top));
+}
+
+#chips {
+  top: calc(60px + env(safe-area-inset-top));
+}
+
+.overlay {
+  padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+}
+
+.overlay.light {
+  padding-bottom: calc(110px + env(safe-area-inset-bottom));
+}
+
+/* dvh: the visible height on mobile browsers, so Enter / Close never sit under the toolbar */
+.modal-card,
+.cust-card,
+.poster-card {
+  max-height: calc(100vh - 32px);
+  max-height: calc(100dvh - 32px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+}
+
+.modal-card {
+  overflow-y: auto;
+}
+
+/* phones: no blur behind the card (see body.low *), so make it opaque enough that HUD text doesn't
+   show through; the keyboard bindings do nothing there; Close/Done stays in view while the card scrolls */
+body.low :is(#passport, #boards, #settingsPanel) .modal-card,
+body.touch :is(#passport, #boards, #settingsPanel) .modal-card {
+  background: rgba(34, 12, 44, 0.98);
+}
+
+body.touch #settingsPanel .keys {
+  display: none;
+}
+
+body.touch #passport .modal-card > .row:last-child,
+body.touch #boards .modal-card > .row:last-child,
+body.touch #settingsPanel .modal-card > .row:last-child {
+  position: sticky;
+  bottom: 0;
+  padding: 10px 0 4px;
+  background: rgb(34, 12, 44);
+}
+
+/* ---------- touch: 44px targets, 16px inputs (no iOS focus zoom) ---------- */
+
+body.touch button.icon {
+  width: 44px;
+  height: 44px;
+}
+
+body.touch #places button {
+  min-height: 40px;
+}
+
+body.touch .swatches {
+  gap: 10px;
+}
+
+body.touch .sw {
+  width: 34px;
+  height: 34px;
+}
+
+body.touch .chips .chip,
+body.touch .tabs button,
+body.touch .seg button {
+  min-height: 40px;
+}
+
+body.touch button.ghost,
+body.touch button.primary.small {
+  min-height: 44px;
+}
+
+body.touch button.ghost.tiny,
+body.touch .keybtn {
+  min-height: 36px;
+}
+
+body.touch #gameExit {
+  min-height: 40px;
+  padding: 8px 16px;
+}
+
+body.touch .cust-close {
+  width: 44px;
+  height: 44px;
+}
+
+body.touch #menu .options button {
+  min-height: 52px;
+}
+
+/* volume sliders: a tall hit area so a thumb can grab them */
+body.touch .srow input[type='range'] {
+  height: 36px;
+}
+
+body.touch .srow input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+}
+
+body.touch .field input,
+body.touch .modal-card input,
+body.touch .srow select {
+  font-size: 16px;
+}
+
+body.touch .cust-section > span,
+body.touch .gh-help,
+body.touch .seg-label {
+  font-size: 13px;
+}
+
+.prompt span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* long option labels and the name fields must shrink with the card instead of widening it */
+.srow {
+  grid-template-columns: 110px minmax(0, 1fr);
+}
+
+.srow.check {
+  grid-template-columns: auto minmax(0, 1fr);
+}
+
+.srow select {
+  width: 100%;
+  min-width: 0;
+  text-overflow: ellipsis;
+}
+
+.cust-right {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.cust-right,
+.cust-grid > * {
+  min-width: 0;
+}
+
+.cust-actions {
+  flex-wrap: wrap;
+}
+
+/* ---------- phone portrait ---------- */
+
+@media (max-width: 760px) {
+  /* row 1: diya + icons, row 2: places */
+  #hud-top {
+    top: calc(8px + env(safe-area-inset-top));
+    left: calc(12px + env(safe-area-inset-left));
+    right: calc(12px + env(safe-area-inset-right));
+    gap: 8px;
+  }
+
+  .brand {
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .brand span {
+    display: none;
+  }
+
+  .hud-icons {
+    gap: 6px;
+  }
+
+  #toast,
+  #stampToast,
+  #gameHud {
+    top: calc(122px + env(safe-area-inset-top));
+  }
+
+  /* all seven fireworks fit: equal columns, labels wrap instead of colliding */
+  #actionbar {
+    left: calc(8px + env(safe-area-inset-left));
+    right: calc(8px + env(safe-area-inset-right));
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 4px;
+    border-radius: 18px;
+  }
+
+  #actionbar button {
+    justify-content: flex-start;
+    min-width: 0;
+    min-height: 56px;
+    padding: 6px 1px;
+    font-size: 10px;
+    line-height: 1.15;
+    white-space: normal;
+    text-align: center;
+  }
+
+  #actionbar button span {
+    font-size: 22px;
+  }
+
+  #prompts {
+    bottom: calc(90px + env(safe-area-inset-bottom));
+    flex-wrap: wrap;
+    justify-content: center;
+    width: max-content;
+    max-width: calc(100% - 24px);
+  }
+
+  .prompt {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  #jumpBtn,
+  #vehicleBtns {
+    right: calc(14px + env(safe-area-inset-right));
+    bottom: calc(160px + env(safe-area-inset-bottom));
+  }
+
+  #chips {
+    top: auto;
+    bottom: calc(150px + env(safe-area-inset-bottom));
+    width: calc(100% - 176px);
+  }
+
+  .overlay {
+    padding-left: max(10px, env(safe-area-inset-left));
+    padding-right: max(10px, env(safe-area-inset-right));
+  }
+
+  .overlay.light {
+    padding-bottom: calc(92px + env(safe-area-inset-bottom));
+  }
+
+  .modal-card {
+    padding: 20px 18px;
+  }
+
+  .cust-card {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 16px;
+  }
+
+  .cust-stage {
+    max-width: min(220px, 30vh);
+    max-width: min(220px, 30dvh);
+  }
+
+  .cust-actions button {
+    white-space: nowrap;
+  }
+}
+
+@media (max-width: 380px) {
+  .brand {
+    display: none;
+  }
+
+  /* keep a 42px hit area (the row of seven still fits 320px with 2px gaps) */
+  body.touch button.icon {
+    width: 42px;
+    height: 42px;
+  }
+
+  .hud-icons {
+    gap: 2px;
+  }
+
+  /* too narrow to sit between the joystick and the jump button: go up where the toast shows,
+     clear of the avatar and its name tag */
+  #chips {
+    top: calc(126px + env(safe-area-inset-top));
+    bottom: auto;
+    width: calc(100% - 32px);
+    transition: opacity 0.2s;
+  }
+
+  /* and step aside while a toast shows */
+  body:has(#toast.show) #chips {
+    opacity: 0;
+  }
+
+  #actionbar button {
+    font-size: 9px;
+  }
+
+  /* one row: two wrapped rows of sticky buttons would hide the name field on a 568px-tall phone */
+  .cust-actions {
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .cust-actions button {
+    flex: 1 1 auto;
+    justify-content: center;
+    min-width: 0;
+  }
+
+  .cust-actions .primary {
+    padding: 12px 10px;
+    font-size: 14px;
+  }
+
+  .cust-actions .ghost {
+    padding: 10px 8px;
+    font-size: 13px;
+  }
+}
+
+@media (max-width: 340px) {
+  #actionbar button {
+    font-size: 8.5px;
+    letter-spacing: -0.2px;
+  }
+}
+
+/* ---------- phone landscape: one header row, compact bars, customiser side by side ---------- */
+
+@media (max-height: 500px) and (orientation: landscape) {
+  #hud-top {
+    top: calc(6px + env(safe-area-inset-top));
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
+  .brand {
+    font-size: 26px;
+    line-height: 1;
+  }
+
+  .brand span {
+    display: none;
+  }
+
+  #places {
+    order: 0;
+    flex: 1 1 auto;
+    width: auto;
+    min-width: 0;
+  }
+
+  .hud-icons {
+    gap: 6px;
+  }
+
+  #toast,
+  #stampToast {
+    top: calc(60px + env(safe-area-inset-top));
+  }
+
+  #gameHud {
+    top: calc(56px + env(safe-area-inset-top));
+    gap: 4px;
+    padding: 8px 14px;
+  }
+
+  /* below the toast (top 60px), which would otherwise cover the countdown */
+  #chips {
+    top: calc(104px + env(safe-area-inset-top));
+    bottom: auto;
+    width: auto;
+  }
+
+  #actionbar {
+    left: 50%;
+    right: auto;
+    bottom: calc(6px + env(safe-area-inset-bottom));
+    display: flex;
+    gap: 2px;
+    max-width: calc(100% - 200px);
+    padding: 4px;
+    border-radius: 16px;
+    transform: translateX(-50%);
+  }
+
+  #actionbar button {
+    min-width: 60px;
+    min-height: 0;
+    padding: 4px 6px;
+    gap: 0;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  #actionbar button span {
+    font-size: 18px;
+  }
+
+  #prompts {
+    bottom: calc(66px + env(safe-area-inset-bottom));
+  }
+
+  #jumpBtn,
+  #vehicleBtns {
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  #vehicleBtns button {
+    width: 56px;
+    height: 56px;
+  }
+
+  .overlay {
+    padding: max(8px, env(safe-area-inset-top)) max(12px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(12px, env(safe-area-inset-left));
+  }
+
+  .overlay.light {
+    padding-bottom: calc(64px + env(safe-area-inset-bottom));
+  }
+
+  .modal-card,
+  .poster-card {
+    max-height: calc(100vh - 16px);
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    padding: 16px 20px;
+  }
+
+  .stamps,
+  .board-body {
+    max-height: 50vh;
+    max-height: 50dvh;
+  }
+
+  /* the preview stays put on the left while the options scroll on the right */
+  .cust-card {
+    grid-template-columns: minmax(180px, 36%) 1fr;
+    gap: 18px;
+    height: calc(100vh - 16px);
+    height: calc(100dvh - 16px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+    max-height: none;
+    padding: 12px 18px;
+    overflow: hidden;
+  }
+
+  .cust-left {
+    min-height: 0;
+    gap: 4px;
+  }
+
+  .cust-brand .hindi {
+    font-size: 16px;
+  }
+
+  .cust-brand h1 {
+    font-size: 24px;
+  }
+
+  .cust-brand .sub {
+    font-size: 12px;
+  }
+
+  .cust-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    max-width: none;
+    aspect-ratio: auto;
+  }
+
+  .cust-right {
+    min-height: 0;
+    padding-right: 4px;
+    overflow-y: auto;
+  }
+
+  .cust-card .controls-hint {
+    margin-top: 0;
+  }
+}
+
+/* ---------- touch controls: stick, tap buttons, coach card ---------- */
+/* Everything here is scoped to body.touch (or to elements only phones show), so desktop is untouched. */
+
+.prompt .tap {
+  display: none;
+}
+
+/* the stick rests bottom-left, thumb-sized; a touch anywhere in the lower-left quarter grabs it */
+body.touch #joystick {
+  display: block;
+  left: calc(18px + env(safe-area-inset-left));
+  top: auto;
+  bottom: calc(100px + env(safe-area-inset-bottom));
+  width: 128px;
+  height: 128px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  background: radial-gradient(circle, rgba(255, 255, 255, 0.04) 40%, rgba(255, 255, 255, 0.14));
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
+  transform: none;
+  opacity: 0.7;
+  transition: opacity 0.2s;
+}
+
+body.touch #joystick.on {
+  opacity: 1;
+}
+
+body.touch #joystick .knob {
+  width: 56px;
+  height: 56px;
+  margin: -28px 0 0 -28px;
+  background: rgba(255, 207, 92, 0.85);
+  box-shadow: 0 0 16px rgba(255, 180, 60, 0.55);
+}
+
+.joy-label {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  color: rgba(255, 255, 255, 0.85);
+  font: 600 11px 'Poppins', sans-serif;
+  text-align: center;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
+
+#joystick.on .joy-label,
+body.veh-ui .joy-label {
+  visibility: hidden;
+}
+
+/* every "press a key" prompt is a big glowing button above the right thumb */
+body.touch #prompts {
+  left: auto;
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(172px + env(safe-area-inset-bottom));
+  flex-direction: column-reverse;
+  flex-wrap: nowrap;
+  align-items: flex-end;
+  width: auto;
+  max-width: calc(100% - 172px - env(safe-area-inset-left) - env(safe-area-inset-right));
+  transform: none;
+}
+
+body.touch .prompt {
+  min-height: 56px;
+  max-width: 100%;
+  padding: 8px 20px 8px 8px;
+  border: 2px solid var(--gold);
+  font-size: 17px;
+  line-height: 1.2;
+  white-space: normal;
+  text-align: left;
+  box-shadow: 0 0 26px rgba(255, 170, 40, 0.55);
+  animation: promptIn 0.2s ease-out, tapPulse 1s ease-in-out 0.2s 3;
+}
+
+body.touch .prompt.alt {
+  min-height: 50px;
+  border-color: rgba(255, 255, 255, 0.6);
+  font-size: 15px;
+  box-shadow: 0 0 14px rgba(255, 255, 255, 0.18);
+  animation: promptIn 0.2s ease-out;
+}
+
+body.touch .prompt:active {
+  transform: scale(0.95);
+}
+
+body.touch .prompt kbd {
+  display: none;
+}
+
+body.touch .prompt .tap {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--gold);
+  font-size: 21px;
+  font-style: normal;
+}
+
+body.touch .prompt.alt .tap {
+  width: 34px;
+  height: 34px;
+  background: rgba(255, 255, 255, 0.85);
+  font-size: 18px;
+}
+
+@keyframes tapPulse {
+  50% {
+    transform: scale(1.06);
+    box-shadow: 0 0 40px rgba(255, 190, 60, 0.9);
+  }
+}
+
+/* the jump button sits right, level with the stick; it goes away when the stick does */
+body.touch #jumpBtn {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(100px + env(safe-area-inset-bottom));
+}
+
+body.touch.joy-off #jumpBtn {
+  display: none !important;
+}
+
+/* driving and flying: labelled buttons where the jump button was, prompts move above them */
+body.touch #vehicleBtns {
+  right: calc(14px + env(safe-area-inset-right));
+  bottom: calc(100px + env(safe-area-inset-bottom));
+}
+
+body.touch #vehicleBtns button {
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 1px;
+}
+
+body.touch #vehicleBtns button b {
+  font-size: 22px;
+  line-height: 1;
+}
+
+body.touch #vehicleBtns button small {
+  font-size: 10px;
+  line-height: 1;
+  color: var(--muted);
+}
+
+body.touch.veh-ui #prompts {
+  bottom: calc(250px + env(safe-area-inset-bottom));
+}
+
+/* keys nobody can press on a phone */
+body.touch #menu .options kbd,
+body.touch #gameExit kbd {
+  display: none;
+}
+
+/* status chips: top-left under the header, out of the thumbs' way */
+body.touch #chips {
+  top: calc(122px + env(safe-area-inset-top));
+  bottom: auto;
+  left: calc(12px + env(safe-area-inset-left));
+  width: auto;
+  flex-direction: column;
+  align-items: flex-start;
+  transform: none;
+}
+
+/* context help: phones show it only in landscape, and only while a ride or vehicle has some */
+body.touch #ctxHelp {
+  display: none;
+}
+
+#ctxHelp i {
+  font-style: normal;
+  font-size: 15px;
+}
+
+/* the first-run coach card */
+#coach {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: rgba(6, 2, 12, 0.6);
+  color: var(--ink);
+  font: 600 15px 'Poppins', sans-serif;
+  animation: promptIn 0.3s ease-out;
+}
+
+#coach > div {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 1px solid var(--panel-border);
+  border-radius: 18px;
+  background: rgba(30, 12, 42, 0.92);
+  line-height: 1.25;
+}
+
+#coach b {
+  font-size: 30px;
+  animation: coachNudge 1.2s ease-in-out infinite;
+}
+
+#coach .coach-walk {
+  left: calc(16px + env(safe-area-inset-left));
+  bottom: calc(244px + env(safe-area-inset-bottom));
+}
+
+#coach .coach-walk b {
+  --nudge: translate(-4px, 6px);
+}
+
+#coach .coach-look {
+  right: calc(16px + env(safe-area-inset-right));
+  top: 42%;
+}
+
+#coach .coach-look b {
+  --nudge: translateX(6px);
+}
+
+#coach .coach-tap {
+  right: calc(16px + env(safe-area-inset-right));
+  bottom: calc(178px + env(safe-area-inset-bottom));
+}
+
+#coach .coach-tap b {
+  --nudge: translateY(6px);
+}
+
+#coach .coach-ok {
+  left: 50%;
+  top: 30%;
+  border-color: var(--gold);
+  color: var(--gold);
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+@keyframes coachNudge {
+  50% {
+    transform: var(--nudge, none);
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  body.touch #joystick {
+    left: calc(24px + env(safe-area-inset-left));
+    bottom: calc(16px + env(safe-area-inset-bottom));
+    width: 120px;
+    height: 120px;
+  }
+
+  body.touch #actionbar {
+    max-width: calc(100% - 420px);
+  }
+
+  body.touch #jumpBtn,
+  body.touch #vehicleBtns {
+    right: calc(16px + env(safe-area-inset-right));
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  body.touch #prompts,
+  body.touch.veh-ui #prompts {
+    right: calc(96px + env(safe-area-inset-right));
+    bottom: calc(70px + env(safe-area-inset-bottom));
+    max-width: 40%;
+  }
+
+  body.touch #chips {
+    top: calc(58px + env(safe-area-inset-top));
+  }
+
+  body.touch #ctxHelp:not(.empty) {
+    display: grid;
+    left: calc(24px + env(safe-area-inset-left));
+    bottom: calc(146px + env(safe-area-inset-bottom));
+    gap: 2px;
+    max-width: 190px;
+    padding: 6px 10px;
+    border-radius: 12px;
+    background: rgba(30, 12, 42, 0.7);
+    color: var(--ink);
+    font-size: 11px;
+  }
+
+  #coach .coach-walk {
+    left: calc(160px + env(safe-area-inset-left));
+    bottom: calc(40px + env(safe-area-inset-bottom));
+  }
+
+  #coach .coach-tap {
+    right: calc(96px + env(safe-area-inset-right));
+    bottom: calc(80px + env(safe-area-inset-bottom));
+  }
+
+  #coach .coach-ok {
+    top: calc(64px + env(safe-area-inset-top));
+  }
+}
+
+/* toasts on phones: a rounded card, not a pill that turns into a circle on narrow screens; below
+   the status chips; and held back while the coach card is up */
+body.touch #toast {
+  border-radius: 18px;
+}
+
+body.coaching #toast {
+  visibility: hidden;
+}
+
+@media (max-width: 760px) {
+  body.touch #toast {
+    top: calc(170px + env(safe-area-inset-top));
+  }
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  body.touch #toast {
+    max-width: calc(100% - 460px);
+  }
+}
+
+/* booth games on phones: a compact score card at the very top, Leave in its corner, and the nav,
+   fireworks bar and chips out of the way so the bottles, balloons and cans stay visible and tappable */
+body.touch.in-booth #places,
+body.touch.in-booth #actionbar,
+body.touch.in-booth #chips {
+  display: none;
+}
+
+body.touch #gameHud {
+  top: calc(60px + env(safe-area-inset-top));
+  justify-items: start;
+  gap: 2px;
+  padding: 8px 104px 8px 14px;
+  text-align: left;
+}
+
+body.touch #gameHud .gh-title {
+  font-size: 17px;
+  line-height: 1.2;
+}
+
+body.touch #gameHud .gh-stats {
+  font-size: 14px;
+}
+
+body.touch #gameHud .gh-help {
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+body.touch #gameExit {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  min-height: 44px;
+  margin: 0;
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  body.touch #gameHud {
+    top: calc(8px + env(safe-area-inset-top));
+    width: min(460px, calc(100% - 32px));
+  }
+
+  body.touch.in-booth #hud-top {
+    visibility: hidden;
+  }
+}
+
+body.touch.in-booth #toast {
+  top: calc(176px + env(safe-area-inset-top));
+}
+
+@media (max-height: 500px) and (orientation: landscape) {
+  body.touch.in-booth #toast {
+    top: calc(104px + env(safe-area-inset-top));
+  }
+}
+
+body.touch #toast {
+  width: max-content;
+}
+
+/* short portrait phones (iPhone SE): the look hint sits higher so it clears the walk hint */
+@media (max-height: 700px) and (orientation: portrait) {
+  #coach .coach-ok {
+    top: 20%;
+  }
+
+  #coach .coach-look {
+    top: 31%;
+  }
+}
+
+/* the analytics notice in the champions and settings panels: quiet, but readable on a phone */
+.modal-card .privacy-note,
+.privacy-note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 242, 214, 0.72);
+  text-align: center;
+}
+
+/* ---------- Share: the pill in the header and its popup (src/share.js) ---------- */
+
+/* desktop and phone landscape: under the header's icons, top right */
+.share-pill {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  height: 46px;
+  padding: 0 18px 0 14px;
+  border: 0;
+  border-radius: 999px;
+  color: #3a1410;
+  background: linear-gradient(180deg, #ffd25a 0%, #f6a21e 55%, #e48a10 100%);
+  box-shadow: 0 3px 0 #b4470a, 0 6px 16px rgba(238, 122, 27, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  font: 700 15px 'Poppins', sans-serif;
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.share-pill svg {
+  width: 20px;
+  height: 20px;
+}
+
+.share-pill:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 #b4470a, 0 3px 8px rgba(238, 122, 27, 0.4);
+}
+
+.share-pill:focus-visible {
+  outline: 3px solid #fff3c4;
+  outline-offset: 2px;
+}
+
+.share-pill::after {
+  content: '';
+  position: absolute;
+  inset: -3px;
+  border: 3px solid #ffd25a;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* the nudge: three beats, then still (only transform/opacity: no layout) */
+.share-pill.nudge {
+  animation: shareNudge 0.9s ease-in-out 3;
+}
+
+.share-pill.nudge::after {
+  animation: shareRing 0.9s ease-out 3;
+}
+
+@keyframes shareNudge {
+  0%, 100% { transform: scale(1); }
+  30% { transform: scale(1.12) rotate(-3deg); }
+  60% { transform: scale(0.97); }
+}
+
+@keyframes shareRing {
+  from { opacity: 0.9; transform: scale(1); }
+  to { opacity: 0; transform: scale(1.35, 1.6); }
+}
+
+body.has-share #stampToast {
+  top: calc(124px + env(safe-area-inset-top));
+}
+
+body.touch.in-booth .share-pill {
+  display: none;
+}
+
+/* phone portrait: in the header, at the end of the places strip (which scrolls anyway) */
+@media (max-width: 760px) {
+  body.has-share #places {
+    flex: 1 1 calc(100% - 124px);
+    width: auto;
+    min-width: 0;
+  }
+
+  .share-pill {
+    position: relative;
+    top: auto;
+    right: auto;
+    order: 4;
+    flex: none;
+    height: 50px;
+    padding: 0 16px 0 13px;
+  }
+
+  body.has-share #stampToast {
+    top: calc(122px + env(safe-area-inset-top));
+  }
+}
+
+/* phone landscape: one header row, so back to the top-right corner under the icons */
+@media (max-height: 500px) and (orientation: landscape) {
+  body.has-share #places {
+    flex: 1 1 auto;
+  }
+
+  .share-pill {
+    position: absolute;
+    top: calc(100% + 6px);
+    right: 0;
+    order: 0;
+    height: 44px;
+  }
+
+  body.has-share #stampToast {
+    top: calc(110px + env(safe-area-inset-top));
+  }
+}
+
+/* phone portrait: the chips (room, Ravan countdown) go below the header, however many rows it
+   wrapped to (--hud-bottom, set by share.js), and never above where they sat before */
+@media (max-width: 760px) and (orientation: portrait) {
+  body.has-share #chips,
+  body.touch.has-share #chips,
+  body.has-share #stampToast {
+    top: max(calc(122px + env(safe-area-inset-top)), calc(var(--hud-bottom, 0px) + 10px));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .share-pill.nudge,
+  .share-pill.nudge::after {
+    animation: none;
+  }
+}
+
+/* the popup: the trailer page's painted signboard (same paper, frame, fonts and colours) */
+.share-pop {
+  --sp-paper: #f4e4c1;
+  --sp-ink: #3a1410;
+  --sp-ink-soft: #6b3a2a;
+  --sp-maroon: #5a1218;
+  --sp-sindoor: #c2301f;
+  --sp-marigold: #f6a21e;
+  --sp-diya: #ffe3a1;
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  padding: max(10px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  background: rgba(10, 3, 8, 0.74);
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.share-pop [hidden] {
+  display: none !important;
+}
+
+.sp-card {
+  position: relative;
+  width: min(430px, 100%);
+  max-height: calc(100vh - 20px);
+  max-height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 18px 16px 16px;
+  border: 6px solid var(--sp-sindoor);
+  border-radius: 12px;
+  background: var(--sp-paper) url('/web/paper.webp') center / cover no-repeat;
+  box-shadow: inset 0 0 0 2px var(--sp-marigold), inset 0 0 0 7px var(--sp-paper), inset 0 0 0 8.5px rgba(194, 48, 31, 0.55), 0 24px 50px rgba(0, 0, 0, 0.55);
+  color: var(--sp-ink);
+  font: 400 15px/1.45 'Poppins', sans-serif;
+  animation: spHang 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+
+@keyframes spHang {
+  from { opacity: 0; transform: translateY(14px) rotate(-1deg); }
+}
+
+.share-pop.loading .sp-main {
+  visibility: hidden;
+}
+
+.share-pop.loading .sp-card {
+  min-height: 220px;
+}
+
+.sp-close {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  float: right;
+  width: 44px;
+  height: 44px;
+  margin: -10px -8px 0 6px;
+  border: 0;
+  border-radius: 50%;
+  background: var(--sp-maroon);
+  color: var(--sp-diya);
+  font-size: 18px;
+  box-shadow: 0 2px 0 #2a0d14;
+}
+
+.sp-kicker {
+  margin: 4px 0 4px;
+  font: 600 11.5px/1.2 'Poppins', sans-serif;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--sp-sindoor);
+  text-align: center;
+}
+
+.sp-sign {
+  margin: 0 0 6px;
+  font: 400 clamp(26px, 7.4vw, 34px)/1.12 'Yatra One', serif;
+  color: var(--sp-maroon);
+  text-align: center;
+  text-shadow: 2px 2px 0 rgba(246, 162, 30, 0.55);
+  text-wrap: balance;
+}
+
+.sp-lede {
+  margin: 0 0 4px;
+  color: var(--sp-ink-soft);
+  font-size: 13px;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.sp-player {
+  position: relative;
+  height: min(30vh, 300px);
+  height: min(30dvh, 300px);
+  aspect-ratio: 9 / 16;
+  margin: 10px auto 12px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #000;
+  box-shadow: 0 0 0 3px var(--sp-sindoor), 0 0 0 6px var(--sp-marigold), 0 12px 26px rgba(58, 20, 16, 0.45);
+}
+
+.share-pop:not(.owner) .sp-player {
+  height: clamp(170px, 25vh, 250px);
+  height: clamp(170px, 25dvh, 250px);
+}
+
+.sp-player video {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  background: #000;
+}
+
+.sp-sound {
+  position: absolute;
+  left: 50%;
+  bottom: 8px;
+  min-height: 34px;
+  padding: 4px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(20, 7, 10, 0.72);
+  color: #fff;
+  font: 600 12px 'Poppins', sans-serif;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+
+.sp-sound.on {
+  opacity: 0.75;
+}
+
+.sp-btn {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  width: 100%;
+  min-height: 56px;
+  padding: 10px 18px;
+  overflow: hidden;
+  border: 0;
+  border-radius: 999px;
+  font: 700 17px 'Poppins', sans-serif;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sp-btn > :not(.sp-prog) {
+  position: relative;
+  z-index: 1;
+}
+
+.sp-btn svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sp-btn:active {
+  transform: translateY(2px);
+}
+
+.sp-native {
+  color: var(--sp-ink);
+  background: linear-gradient(180deg, #ffd25a 0%, var(--sp-marigold) 55%, #e48a10 100%);
+  box-shadow: 0 3px 0 #b4470a, 0 10px 22px rgba(238, 122, 27, 0.35), inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+.sp-native[disabled] {
+  filter: saturate(0.8);
+}
+
+.sp-prog {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0), rgba(255, 255, 255, 0.5));
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  transition: transform 0.2s linear;
+}
+
+.sp-ch {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.sp-ch button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 52px;
+  padding: 5px 2px;
+  border: 0;
+  border-radius: 14px;
+  color: #fff;
+  font: 600 11.5px/1.1 'Poppins', sans-serif;
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.25);
+  -webkit-tap-highlight-color: transparent;
+}
+
+.sp-ch button:active {
+  transform: translateY(2px);
+}
+
+.sp-ch svg {
+  width: 22px;
+  height: 22px;
+}
+
+.sp-ch .c-wa { background: #1fa855; }
+.sp-ch .c-ig { background: linear-gradient(45deg, #f9a43a, #e1306c 50%, #833ab4); }
+.sp-ch .c-li { background: #0a66c2; }
+.sp-ch .c-x { background: #111; }
+.sp-ch .c-copy { background: var(--sp-maroon); }
+.sp-ch .c-dl { background: var(--sp-sindoor); }
+
+.sp-link {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-top: 10px;
+}
+
+.sp-url {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  padding: 10px 12px;
+  border: 1.5px dashed rgba(194, 48, 31, 0.45);
+  border-radius: 10px;
+  background: #fffaf0;
+  color: var(--sp-sindoor);
+  font: 600 14px 'Poppins', sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sp-link button {
+  min-height: 44px;
+  padding: 8px 16px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--sp-maroon);
+  color: var(--sp-diya);
+  font: 600 14px 'Poppins', sans-serif;
+  box-shadow: 0 2px 0 #2a0d14;
+}
+
+.sp-toast {
+  min-height: 0;
+  margin: 8px 2px 0;
+  color: #2f6b2a;
+  font-size: 13.5px;
+  font-weight: 600;
+  text-align: center;
+}
+
+.sp-toast:empty {
+  margin: 0;
+}
+
+.sp-own {
+  margin-top: 14px;
+  padding: 14px;
+  border: 2px solid var(--sp-marigold);
+  border-radius: 14px;
+  background: rgba(255, 250, 240, 0.8);
+  box-shadow: 0 0 0 3px rgba(194, 48, 31, 0.18);
+}
+
+.sp-own-txt b {
+  display: block;
+  font: 400 21px/1.15 'Yatra One', serif;
+  color: var(--sp-maroon);
+}
+
+.sp-own-txt span {
+  display: block;
+  margin: 3px 0 10px;
+  color: var(--sp-ink-soft);
+  font-size: 13.5px;
+}
+
+.sp-own-btn {
+  min-height: 52px;
+  color: var(--sp-diya);
+  background: linear-gradient(180deg, var(--sp-sindoor), #9e2412);
+  box-shadow: 0 3px 0 #6e1508, 0 8px 18px rgba(194, 48, 31, 0.3);
+  font-size: 16px;
+}
+
+/* the generator inside the popup */
+.share-pop.gen .sp-card {
+  display: flex;
+  flex-direction: column;
+  width: min(500px, 100%);
+  height: calc(100vh - 20px);
+  height: calc(100dvh - 20px - env(safe-area-inset-top) - env(safe-area-inset-bottom));
+  max-height: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+.share-pop.gen .sp-close {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  float: none;
+  margin: 0;
+}
+
+.sp-gen {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.sp-genbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 52px;
+  padding: 4px 56px 4px 6px;
+  background: var(--sp-maroon);
+  color: var(--sp-diya);
+  font: 400 18px 'Yatra One', serif;
+}
+
+.sp-back {
+  min-height: 44px;
+  padding: 6px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 227, 161, 0.14);
+  color: var(--sp-diya);
+  font: 600 14px 'Poppins', sans-serif;
+}
+
+.sp-frame {
+  flex: 1;
+  min-height: 0;
+  background: #14070a;
+}
+
+.sp-frame iframe {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}
+
+/* phones on their side: the trailer stands on the left, everything else beside it */
+@media (max-height: 500px) and (orientation: landscape) {
+  .sp-card {
+    width: min(720px, 100%);
+    padding: 12px 16px 12px;
+  }
+
+  .sp-main {
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 18px;
+  }
+
+  .sp-main > *,
+  .sp-body > * {
+    grid-column: 2;
+  }
+
+  .sp-body {
+    display: contents;
+  }
+
+  .sp-main > .sp-kicker {
+    margin-top: 2px;
+  }
+
+  .sp-sign {
+    font-size: 26px;
+  }
+
+  .sp-player,
+  .share-pop:not(.owner) .sp-player {
+    grid-column: 1;
+    grid-row: 1 / span 6;
+    align-self: start;
+    height: min(calc(100vh - 60px), 330px);
+    height: min(calc(100dvh - 60px), 330px);
+    margin: 4px 0;
+  }
+
+  /* three a row, icon beside the label: six labels never fit one row of a 568px-wide phone */
+  .sp-ch button {
+    flex-direction: row;
+    gap: 6px;
+    min-height: 44px;
+    font-size: 12px;
+  }
+
+  .sp-ch svg {
+    width: 19px;
+    height: 19px;
+    flex: none;
+  }
+
+  .sp-ch {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .sp-btn {
+    min-height: 50px;
+  }
+
+  .share-pop.gen .sp-card {
+    width: min(760px, 100%);
   }
 }

@@ -1,6 +1,6 @@
 /*
   Player settings that persist in the browser: graphics tier, reduced motion, music mode and
-  key bindings. `tier` is what the rest of the app reads; 'auto' resolves from the device.
+  key bindings, and the Voices / Music volumes. `tier` is what the rest of the app reads; 'auto' resolves from the device.
 */
 const KEY = 'melaSettings';
 
@@ -49,8 +49,10 @@ export const settings = {
   music: 'song', // song | band (the synthesised, royalty-free mela band)
   keys: { ...DEFAULT_KEYS },
   voice: 'open', // open (voice-activated) | ptt (hold the Talk key)
-  voiceVolume: 1,
+  voiceVolume: 1, // the Voices slider: voice chat and the Tambola caller
+  musicVolume: 1, // the Music slider: the Diwali song or the mela band (effects stay as they are)
   detected: 'high',
+  midGpu: false, // high tier, but start at a lower pixel ratio
 
   get tier() {
     return this.quality === 'auto' ? this.detected : this.quality;
@@ -65,6 +67,7 @@ export const settings = {
         if (['song', 'band'].includes(s.music)) this.music = s.music;
         if (['open', 'ptt'].includes(s.voice)) this.voice = s.voice;
         if (typeof s.voiceVolume === 'number') this.voiceVolume = Math.max(0, Math.min(1, s.voiceVolume));
+        if (typeof s.musicVolume === 'number') this.musicVolume = Math.max(0, Math.min(1, s.musicVolume));
         if (s.keys && typeof s.keys === 'object') for (const k of Object.keys(DEFAULT_KEYS)) if (typeof s.keys[k] === 'string') this.keys[k] = s.keys[k];
       }
     } catch {
@@ -76,7 +79,7 @@ export const settings = {
 
   save() {
     try {
-      localStorage.setItem(KEY, JSON.stringify({ quality: this.quality, reduceMotion: this.reduceMotion, music: this.music, keys: this.keys, voice: this.voice, voiceVolume: this.voiceVolume }));
+      localStorage.setItem(KEY, JSON.stringify({ quality: this.quality, reduceMotion: this.reduceMotion, music: this.music, keys: this.keys, voice: this.voice, voiceVolume: this.voiceVolume, musicVolume: this.musicVolume }));
     } catch {
       // ignore
     }
@@ -100,7 +103,10 @@ export const settings = {
     const coarse = matchMedia('(pointer: coarse)').matches;
     const weakCpu = (navigator.hardwareConcurrency || 8) <= 4;
     const weakMem = (navigator.deviceMemory || 8) <= 4;
-    const weakGpu = /Mali|Adreno|PowerVR|Apple GPU|Intel\(R\) (UHD|HD|Iris)|SwiftShader|llvmpipe/i.test(gpu);
+    const weakGpu = /Mali|Adreno|PowerVR|Apple GPU|Intel\(R\) (UHD|HD|Iris)|Intel.*(UHD|HD) Graphics|Iris\(R\) Xe|SwiftShader|llvmpipe|softpipe|Microsoft Basic Render|Immortalis|Xclipse|Maleoon|Vivante|Tegra/i.test(gpu);
+    // newer integrated GPUs (Intel Arc / "Intel(R) Graphics", Apple M-series through ANGLE) cope with
+    // the high tier but not at a retina pixel ratio: they start lower and the governor raises it
+    this.midGpu = !weakGpu && /Intel.*(Arc|\(R\) Graphics)|ANGLE Metal Renderer: Apple M|Apple M\d/i.test(gpu);
     let fewUniforms = false;
     try {
       const gl = renderer.getContext();

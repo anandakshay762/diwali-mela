@@ -1,6 +1,9 @@
+import { tk } from './touch.js';
 import * as THREE from 'three';
 import { canvasTexture, beam, setLayer } from './utils.js';
 import { signTexture } from './stalls.js';
+import { slot } from './personalSlots.js';
+import { mergeStatic, mergeAdded } from './merge.js';
 
 /*
   Three walls that visitors fill:
@@ -10,6 +13,8 @@ import { signTexture } from './stalls.js';
 */
 const std = (color, roughness = 0.8, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness, ...extra });
 const V = (x, y, z) => new THREE.Vector3(x, y, z);
+/** how far above its shelf niche a kandeel hangs on the Deepmala */
+export const KANDEEL_DROP = 0.62;
 const fmtLap = (ms) => {
   const s = ms / 1000;
   return `${String(Math.floor(s / 60)).padStart(2, '0')}:${(s % 60).toFixed(1).padStart(4, '0')}`;
@@ -29,15 +34,13 @@ function board(scene, world, { x, z, ry, w, h, draw, title, sub, bg }) {
   g.rotation.y = ry;
   const frame = new THREE.Mesh(new THREE.BoxGeometry(w + 0.3, h + 0.3, 0.14), std(0x3d2a1c, 0.8));
   frame.position.y = 0.9 + h / 2;
-  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1.15, 1.15, 1.15) }));
+  const face = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, color: new THREE.Color(1, 1, 1) }));
   face.position.set(0, 0.9 + h / 2, 0.08);
   for (const s of [-1, 1]) g.add(beam(V(s * (w / 2 + 0.05), 0, 0), V(s * (w / 2 + 0.05), 0.95, 0), 0.07, std(0x3d2a1c)));
-  const cap = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * 0.22), new THREE.MeshBasicMaterial({ map: signTexture(title, sub, bg), color: new THREE.Color(1.2, 1.2, 1.2) }));
+  const cap = new THREE.Mesh(new THREE.PlaneGeometry(w * 0.7, h * 0.22), new THREE.MeshBasicMaterial({ map: signTexture(title, sub, bg), color: new THREE.Color(1, 1, 1) }));
   cap.position.set(0, 0.9 + h + 0.15 + h * 0.11, 0.08);
-  g.add(frame, face, cap);
-  const lamp = new THREE.PointLight(0xffd9a0, 18, 8, 2);
-  lamp.position.set(0, 0.9 + h + 0.4, 1.2);
-  g.add(lamp);
+  g.add(frame, face, cap); // the face and caption are unlit (basic), so a board needs no lamp of its own
+  mergeStatic(g); // frame and legs share a look
   scene.add(g);
   g.updateMatrixWorld(true);
   const a = g.localToWorld(V(-w / 2 - 0.2, 0, -0.15));
@@ -65,6 +68,7 @@ export class Walls {
     const { scene, world, net } = ctx;
 
     // ---- Deepmala wall ----
+    const before = new Set(scene.children);
     this.slots = [];
     const wx = -13;
     const z0 = 61;
@@ -92,7 +96,7 @@ export class Walls {
     world.colliders.push({ type: 'box', minX: wx - 0.3, maxX: wx + 0.65, minZ: z0, maxZ: z0 + len });
     const sign = new THREE.Mesh(
       new THREE.PlaneGeometry(3.2, 0.9),
-      new THREE.MeshBasicMaterial({ map: signTexture('Deepmala', 'Bring a diya or kandeel and press Q here', '#5c0a10', '#ffe7a3', 1024, 288), color: new THREE.Color(1.2, 1.2, 1.2) })
+      new THREE.MeshBasicMaterial({ map: signTexture(slot('sign.deepmala'), tk('Bring a diya or kandeel and press Q here', 'Bring a diya or kandeel and tap the button here'), '#5c0a10', '#ffe7a3', 1024, 288), color: new THREE.Color(1, 1, 1) })
     );
     sign.position.set(wx + 0.3, 2.6, z0 + len / 2);
     sign.rotation.y = Math.PI / 2;
@@ -101,6 +105,7 @@ export class Walls {
     lamp.position.set(wx + 1.5, 2.6, z0 + len / 2);
     scene.add(lamp);
     this.wallCenter = V(wx + 0.4, 0, z0 + len / 2);
+    mergeAdded(scene, before); // the three shelves become one mesh
 
     // ---- leaderboard at the gate ----
     this.leader = board(scene, world, {
@@ -199,9 +204,21 @@ export class Walls {
   /** Marks niches already filled by things restored from a previous visit. */
   claimFrom(placed) {
     for (const p of placed) {
-      const slot = this.slots.find((s) => s.pos.distanceTo(p.obj.position) < 0.12);
+      const slot = this.slotOf(p.kind, p.obj.position);
       if (slot) slot.taken = true;
     }
+  }
+
+  /** The niche a placed diya/kandeel sits in (a kandeel hangs KANDEEL_DROP above its shelf), or null. */
+  slotOf(kind, pos) {
+    const y = pos.y - (kind === 'kandeel' ? KANDEEL_DROP : 0);
+    let best = null;
+    let bestD = 0.06;
+    for (const s of this.slots) {
+      const d = Math.hypot(s.pos.x - pos.x, s.pos.y - y, s.pos.z - pos.z);
+      if (d < bestD) (best = s), (bestD = d);
+    }
+    return best;
   }
 }
 
